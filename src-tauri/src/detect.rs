@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn normalizes_github_remotes() {
-        assert_eq!(normalize_github("git@github.com:AstroDevCompany/BluePhoenix.git").as_deref(), Some("https://github.com/AstroDevCompany/BluePhoenix"));
+        assert_eq!(normalize_github("git@github.com:montanari-luca/BluePhoenix.git").as_deref(), Some("https://github.com/montanari-luca/BluePhoenix"));
         assert_eq!(normalize_github("https://github.com/a/b.git").as_deref(), Some("https://github.com/a/b"));
         assert_eq!(normalize_github("https://gitlab.com/a/b.git"), None);
     }

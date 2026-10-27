@@ -10,9 +10,9 @@ use tokio::io::AsyncWriteExt;
 use crate::error::{err, Result};
 
 const VERSION_URL: &str =
-    "https://raw.githubusercontent.com/AstroDevCompany/MintFlow-Releases/refs/heads/main/bluephoenix-v.json";
+    "https://raw.githubusercontent.com/montanari-luca/MintFlow-Releases/refs/heads/main/bluephoenix-v.json";
 const DOWNLOAD_URL: &str =
-    "https://raw.githubusercontent.com/AstroDevCompany/MintFlow-Releases/refs/heads/main/bluephoenix-d.json";
+    "https://raw.githubusercontent.com/montanari-luca/MintFlow-Releases/refs/heads/main/bluephoenix-d.json";
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
