@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppInfo,
+  Automation,
+  AutomationRun,
+  AutomationSummary,
   Branch,
   CliStatus,
   Command,
@@ -46,6 +49,13 @@ export const api = {
   deleteTime: (id: string) => invoke<void>("time_delete", { id }),
   settings: () => invoke<Settings>("settings_get_all"),
   setSetting: (key: string, value: string) => invoke<void>("settings_set", { key, value }),
+
+  // automations
+  automations: () => invoke<Automation[]>("automations_list"),
+  saveAutomation: (automation: Automation) => invoke<Automation>("automation_save", { automation }),
+  deleteAutomation: (id: string) => invoke<void>("automation_delete", { id }),
+  automationRuns: (id: string) => invoke<AutomationRun[]>("automation_runs", { id }),
+  runAutomation: (id: string, projectId?: string) => invoke<AutomationSummary>("automation_run", { id, projectId }),
 
   // git
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),

@@ -5,8 +5,10 @@ import { CommandPalette } from "./components/CommandPalette";
 import { TitleBar } from "./components/TitleBar";
 import { Toasts } from "./components/ui";
 import { api } from "./lib/api";
+import type { AutomationSummary } from "./lib/types";
 import { setNavigator } from "./lib/actions";
 import { useStore } from "./lib/store";
+import Automations from "./pages/Automations";
 import Dashboard from "./pages/Dashboard";
 import ProjectPage from "./pages/ProjectPage";
 import Settings from "./pages/Settings";
@@ -25,6 +27,18 @@ function Shell() {
       const { state, message } = e.payload;
       if (state === "started") useStore.getState().toast({ kind: "success", title: message, detail: "Local AI is ready." });
       if (state === "failed") useStore.getState().toast({ kind: "error", title: "Local AI is not available", detail: message });
+    });
+    return () => void un.then((f) => f());
+  }, []);
+
+  // Automations run in the background (launch, schedule, commit, quit); refresh the list and surface failures.
+  useEffect(() => {
+    const un = listen<AutomationSummary[]>("automation-finished", (e) => {
+      const { toast, loadAutomations } = useStore.getState();
+      void loadAutomations();
+      for (const s of e.payload) {
+        if (s.failed > 0) toast({ kind: "error", title: `${s.name}: ${s.failed} failed`, detail: "Open Automations for the run log." });
+      }
     });
     return () => void un.then((f) => f());
   }, []);
@@ -53,6 +67,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/project/:id" element={<ProjectPage />} />
+          <Route path="/automations" element={<Automations />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Dashboard />} />
         </Routes>

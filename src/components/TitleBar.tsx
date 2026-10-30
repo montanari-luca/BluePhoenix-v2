@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowUpCircle, LayoutGrid, Minus, Search, Settings as SettingsIcon, Square, X } from "lucide-react";
+import { ArrowUpCircle, LayoutGrid, Minus, Zap, Search, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useStore } from "../lib/store";
 import { Kbd } from "./ui";
@@ -48,6 +48,13 @@ export function TitleBar() {
         {({ isActive }) => (
           <span className="tab no-drag" data-active={isActive}>
             <LayoutGrid size={15} /> Dashboard
+          </span>
+        )}
+      </NavLink>
+      <NavLink to="/automations" className="no-drag">
+        {({ isActive }) => (
+          <span className="tab no-drag" data-active={isActive}>
+            <Zap size={15} /> Automations
           </span>
         )}
       </NavLink>

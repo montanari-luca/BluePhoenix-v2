@@ -55,6 +55,28 @@ CREATE INDEX idx_time_project ON time_entries(project_id);
 CREATE INDEX idx_cmd_project ON commands(project_id);
 "#;
 
+// Automations are local-only: no `dirty`/`deleted` columns, and they are not part of cloud sync.
+const MIGRATION_2: &str = r#"
+CREATE TABLE automations(
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1, trigger_kind TEXT NOT NULL, run_at INTEGER, repeat_hours INTEGER,
+  notify TEXT NOT NULL DEFAULT 'none', notify_before_min INTEGER,
+  target_mode TEXT NOT NULL DEFAULT 'selected', project_ids TEXT NOT NULL DEFAULT '[]', kind_filter TEXT,
+  idle_hours INTEGER, require_clean_git INTEGER NOT NULL DEFAULT 0, require_git_repo INTEGER NOT NULL DEFAULT 0,
+  commands TEXT NOT NULL, sort INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+);
+CREATE TABLE automation_runs(
+  id TEXT PRIMARY KEY, automation_id TEXT NOT NULL, project_id TEXT NOT NULL, project_name TEXT NOT NULL,
+  started_at INTEGER NOT NULL, finished_at INTEGER NOT NULL, status TEXT NOT NULL,
+  exit_code INTEGER, output TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_autorun_automation ON automation_runs(automation_id, started_at);
+CREATE TABLE automation_state(
+  automation_id TEXT NOT NULL, project_id TEXT NOT NULL, last_run INTEGER NOT NULL,
+  PRIMARY KEY(automation_id, project_id)
+);
+"#;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -64,6 +86,10 @@ impl Db {
         if version < 1 {
             conn.execute_batch(MIGRATION_1)?;
             conn.pragma_update(None, "user_version", 1)?;
+        }
+        if version < 2 {
+            conn.execute_batch(MIGRATION_2)?;
+            conn.pragma_update(None, "user_version", 2)?;
         }
         Ok(Db(Mutex::new(conn)))
     }

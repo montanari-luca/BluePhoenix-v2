@@ -183,3 +183,52 @@ export interface SyncStatus {
   lastSync: number | null;
   lastError: string | null;
 }
+
+export type AutomationTrigger = "launch" | "quit" | "manual" | "schedule" | "commit";
+export type AutomationNotify = "none" | "on_run" | "before";
+
+export interface Automation {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  trigger: AutomationTrigger;
+  /** Epoch ms: the first time it may run. */
+  runAt: number | null;
+  repeatHours: number | null;
+  notify: AutomationNotify;
+  notifyBeforeMin: number | null;
+  targetMode: "selected" | "all";
+  projectIds: string[];
+  /** Project type to narrow "all projects" to, e.g. "Tauri". */
+  kindFilter: string | null;
+  /** Requisite: not edited for this many hours. */
+  idleHours: number | null;
+  requireCleanGit: boolean;
+  requireGitRepo: boolean;
+  commands: string;
+  sort: number;
+  lastRun?: number | null;
+  lastStatus?: "ok" | "failed" | "timeout" | null;
+}
+
+export interface AutomationRun {
+  id: string;
+  automationId: string;
+  projectId: string;
+  projectName: string;
+  startedAt: number;
+  finishedAt: number;
+  status: "ok" | "failed" | "timeout";
+  exitCode: number | null;
+  output: string;
+}
+
+export interface AutomationSummary {
+  automationId: string;
+  name: string;
+  notify: AutomationNotify;
+  ok: number;
+  failed: number;
+  skipped: { project: string; reason: string }[];
+}

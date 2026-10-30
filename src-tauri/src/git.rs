@@ -470,11 +470,13 @@ pub async fn git_unstage(path: String, files: Vec<String>) -> Result<()> {
 }
 
 #[tauri::command]
-pub async fn git_commit(path: String, message: String) -> Result<String> {
+pub async fn git_commit(app: tauri::AppHandle, path: String, message: String) -> Result<String> {
     if message.trim().is_empty() {
         return err("Commit message is empty");
     }
-    act(&path, &["commit", "-m", &message], 60).await
+    let out = act(&path, &["commit", "-m", &message], 60).await?;
+    crate::automation_runtime::after_commit(&app, &path);
+    Ok(out)
 }
 
 #[tauri::command]

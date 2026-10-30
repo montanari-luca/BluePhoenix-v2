@@ -95,7 +95,7 @@ BluePhoenix checks for updates when it starts and shows a button when a new vers
 
 ## Learn more
 
-The full **[user guide](docs/README.md)** covers everything: [getting started](docs/getting-started.md) · [the dashboard](docs/dashboard.md) · [git](docs/git.md) · [editors, terminals and commands](docs/editors-terminals-commands.md) · [to-dos](docs/todos.md) · [time tracking](docs/time-tracking.md) · [AI setup](docs/ai.md) · [command line](docs/cli.md) · [cloud sync and iPhone](docs/sync.md) · [troubleshooting](docs/troubleshooting.md).
+The full **[user guide](docs/README.md)** covers everything: [getting started](docs/getting-started.md) · [the dashboard](docs/dashboard.md) · [git](docs/git.md) · [editors, terminals and commands](docs/editors-terminals-commands.md) · [to-dos](docs/todos.md) · [time tracking](docs/time-tracking.md) · [automations](docs/automations.md) · [AI setup](docs/ai.md) · [command line](docs/cli.md) · [cloud sync and iPhone](docs/sync.md) · [troubleshooting](docs/troubleshooting.md).
 
 ## Your data and privacy
 

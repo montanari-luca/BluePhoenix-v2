@@ -1,7 +1,7 @@
 import { Command } from "cmdk";
 import {
   Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Clock, Code2, FolderOpen, FolderPlus, Globe, LayoutDashboard,
-  Moon, Palette, Play, RefreshCw, Search, Settings as SettingsIcon, Sparkles, SquareTerminal, Star, Sun, Terminal,
+  Moon, Palette, Play, RefreshCw, Search, Settings as SettingsIcon, Sparkles, SquareTerminal, Star, Sun, Terminal, Zap,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
@@ -116,6 +116,7 @@ export function CommandPalette() {
       heading: "Navigate",
       items: [
         { id: "dash", label: "Dashboard", icon: <LayoutDashboard size={15} />, run: () => nav("/") },
+        { id: "automations", label: "Automations", icon: <Zap size={15} />, keywords: ["automation", "schedule", "cron", "chores"], run: () => nav("/automations") },
         { id: "settings", label: "Settings", icon: <SettingsIcon size={15} />, run: () => nav("/settings") },
         { id: "settings-ai", label: "Settings: AI providers", icon: <Sparkles size={15} />, run: () => nav("/settings?section=ai") },
         { id: "settings-sync", label: "Settings: Cloud sync", icon: <SettingsIcon size={15} />, run: () => nav("/settings?section=sync") },

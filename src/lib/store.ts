@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api, errMsg } from "./api";
 import { applyTheme } from "./theme";
-import type { AppInfo, Command, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
+import type { AppInfo, Automation, Command, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
 
 export interface Toast {
   id: number;
@@ -17,6 +17,7 @@ interface State {
   projects: ProjectSummary[];
   statuses: Record<string, GitStatus | null>;
   commands: Record<string, Command[]>;
+  automations: Automation[];
   editors: AppInfo[];
   terminals: AppInfo[];
   toasts: Toast[];
@@ -31,6 +32,7 @@ interface State {
   refreshStatus: (id: string) => Promise<GitStatus | null>;
   refreshAllStatuses: () => Promise<void>;
   loadCommands: (id: string) => Promise<Command[]>;
+  loadAutomations: () => Promise<void>;
   setSetting: (key: string, value: string) => Promise<void>;
   toast: (t: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
@@ -49,6 +51,7 @@ export const useStore = create<State>((set, get) => ({
   projects: [],
   statuses: {},
   commands: {},
+  automations: [],
   editors: [],
   terminals: [],
   toasts: [],
@@ -107,6 +110,14 @@ export const useStore = create<State>((set, get) => ({
     const cmds = await api.commands(id).catch(() => [] as Command[]);
     set((st) => ({ commands: { ...st.commands, [id]: cmds } }));
     return cmds;
+  },
+
+  loadAutomations: async () => {
+    try {
+      set({ automations: await api.automations() });
+    } catch (e) {
+      get().toast({ kind: "error", title: "Could not load automations", detail: errMsg(e) });
+    }
   },
 
   setSetting: async (key, value) => {

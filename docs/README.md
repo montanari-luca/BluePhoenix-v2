@@ -16,6 +16,7 @@ BluePhoenix is a project manager for developers (and for anything else you work 
 - [Time tracking](time-tracking.md): one-click time logging
 - [Files](files.md): browse and open any file in your project
 - [Changelogs](changelog.md): release notes from your git history
+- [Automations](automations.md): run commands in your projects on launch, on a schedule or after a commit
 
 **Smart features**
 

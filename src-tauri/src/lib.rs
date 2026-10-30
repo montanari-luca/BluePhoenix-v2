@@ -1,4 +1,6 @@
 mod ai;
+mod automation_runtime;
+mod automations;
 pub mod cli;
 mod cli_install;
 mod db;
@@ -96,12 +98,14 @@ pub fn run() {
     #[cfg(unix)]
     fix_path_env();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(pty::PtyState::default())
         .manage(ai::LlamaState::default())
         .manage(sync::SyncGuard::default())
+        .manage(automation_runtime::AutomationState::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -109,6 +113,7 @@ pub fn run() {
             app.manage(db);
             build_main_window(app)?;
             sync::start_background(app.handle().clone());
+            automation_runtime::start_background(app.handle().clone());
             {
                 // Installs / repairs the `bluephoenix` terminal command in the background.
                 let handle = app.handle().clone();
@@ -208,12 +213,25 @@ pub fn run() {
             cli_install::cli_status,
             cli_install::cli_install,
             cli_install::cli_uninstall,
+            // automations
+            automations::automations_list,
+            automations::automation_save,
+            automations::automation_delete,
+            automations::automation_runs,
+            automation_runtime::automation_run,
             // updater
             updater::check_update,
             updater::download_update,
             updater::install_update,
             updater::quit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running BluePhoenix");
+        .build(tauri::generate_context!())
+        .expect("error while building BluePhoenix");
+
+    app.run(|handle, event| {
+        // `code` is None when the user closes the app; our own exit(0) carries a code and passes straight through.
+        if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
+            automation_runtime::on_exit_requested(handle, api);
+        }
+    });
 }
