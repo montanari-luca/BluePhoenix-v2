@@ -72,17 +72,37 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
     setDetecting(true);
     try {
       const d: Detected = await api.detect(dir);
-      setForm({
-        name: d.name,
-        description: d.description ?? "",
-        path: dir,
-        kind: d.kind,
-        githubUrl: d.githubUrl ?? "",
-        websiteUrl: "",
-      });
-      setDetected(d.commands);
-      // Pre-select the most useful commands.
-      setPicked(new Set(d.commands.slice(0, 12).map((c) => c.command)));
+      // A .bluephoenix file left by an earlier add takes precedence over detection.
+      const saved = await api.projectFileRead(dir).catch(() => null);
+      if (saved) {
+        setForm({
+          name: saved.name,
+          description: saved.description ?? "",
+          path: dir,
+          kind: saved.kind || d.kind,
+          githubUrl: saved.githubUrl ?? "",
+          websiteUrl: saved.websiteUrl ?? "",
+        });
+        setEditor(saved.defaultEditor ?? "");
+        setTerminal(saved.defaultTerminal ?? "");
+        const restored: DetectedCommand[] = saved.commands.map((c) => ({ ...c, source: c.source ?? "auto" }));
+        const known = new Set(restored.map((c) => c.command));
+        setDetected([...restored, ...d.commands.filter((c) => !known.has(c.command))]);
+        setPicked(known);
+        toast({ kind: "info", title: "Restored settings from .bluephoenix" });
+      } else {
+        setForm({
+          name: d.name,
+          description: d.description ?? "",
+          path: dir,
+          kind: d.kind,
+          githubUrl: d.githubUrl ?? "",
+          websiteUrl: "",
+        });
+        setDetected(d.commands);
+        // Pre-select the most useful commands.
+        setPicked(new Set(d.commands.slice(0, 12).map((c) => c.command)));
+      }
       setStep("details");
     } catch (e) {
       toast({ kind: "error", title: "Could not read that folder", detail: errMsg(e) });
@@ -141,18 +161,34 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
       });
       if (!editing) {
         let i = 0;
-        for (const c of detected.filter((d) => picked.has(d.command))) {
+        const chosen = detected.filter((d) => picked.has(d.command));
+        for (const c of chosen) {
           await api.saveCommand({
             id: uid(),
             projectId: saved.id,
             label: c.label,
             command: c.command,
-            cwd: null,
-            source: c.source === "ai" ? "ai" : "auto",
+            cwd: c.cwd ?? null,
+            source: c.source === "ai" || c.source === "manual" ? c.source : "auto",
             sort: i++,
           });
         }
-        if (saved.path) void api.indexFiles(saved.id, saved.path).catch(() => undefined);
+        if (saved.path) {
+          void api.indexFiles(saved.id, saved.path).catch(() => undefined);
+          // Kept in the folder so removing and re-adding the project restores these settings.
+          void api
+            .projectFileWrite(saved.path, {
+              name: saved.name,
+              description: saved.description,
+              kind: saved.kind,
+              githubUrl: saved.githubUrl,
+              websiteUrl: saved.websiteUrl,
+              defaultEditor: saved.defaultEditor,
+              defaultTerminal: saved.defaultTerminal,
+              commands: chosen.map((c) => ({ label: c.label, command: c.command, cwd: c.cwd ?? null, source: c.source })),
+            })
+            .catch(() => undefined);
+        }
       }
       await loadProjects();
       void useStore.getState().loadCommands(saved.id);

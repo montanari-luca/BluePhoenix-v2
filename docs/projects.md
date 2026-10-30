@@ -11,6 +11,12 @@ See [Getting started](getting-started.md#add-your-first-project). BluePhoenix re
 
 If nothing useful is found, add commands yourself, or press **Scan with AI** (see [AI features](ai.md)).
 
+### The `.bluephoenix` file
+
+When you add a project that has a folder, BluePhoenix writes a `.bluephoenix` file into it with the project's name, description, type, links, default editor and terminal, and the commands you picked. If you later remove the project and add the folder again (in the app or with `bluephoenix add`), these settings are restored from the file instead of being detected again.
+
+The file is plain JSON. BluePhoenix does not add it to `.gitignore`, so you can commit it and share the setup with your team. If you would rather not, ignore it yourself. The file is only written when a project is added; later edits in the app do not update it.
+
 ## Edit a project
 
 Open the project and choose **Edit project…** from the **⋯** menu. You can change the name, description, type, folder, GitHub and website links, and the project's own default editor and terminal.

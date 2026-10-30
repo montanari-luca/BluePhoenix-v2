@@ -11,6 +11,7 @@ use crate::db::{self, Db};
 use crate::detect;
 use crate::error::{err, AppError, Result};
 use crate::files;
+use crate::project_file::{self, ProjectFile, ProjectFileCommand};
 
 /// Must match `identifier` in tauri.conf.json (checked by a test); it names the app data folder.
 const IDENTIFIER: &str = "com.astrodev.bluephoenix";
@@ -317,29 +318,48 @@ async fn add(path_arg: Option<&str>) -> Result<()> {
     }
 
     let d = detect::detect_path(&path).await?;
+    let restored = project_file::read(&dir);
     let now = db::now();
     let saved = db::save_project(
         &db,
         db::Project {
             id: uuid::Uuid::new_v4().to_string(),
-            name: if d.name.trim().is_empty() { "Project".into() } else { d.name.clone() },
-            description: d.description.clone().filter(|s| !s.trim().is_empty()),
+            name: match &restored {
+                Some(f) => f.name.trim().to_string(),
+                None if d.name.trim().is_empty() => "Project".into(),
+                None => d.name.clone(),
+            },
+            description: match &restored {
+                Some(f) => f.description.clone(),
+                None => d.description.clone(),
+            }
+            .filter(|s| !s.trim().is_empty()),
             path: path.clone(),
-            kind: d.kind.clone(),
+            kind: restored.as_ref().and_then(|f| f.kind.clone()).filter(|k| !k.trim().is_empty()).unwrap_or_else(|| d.kind.clone()),
             favorite: false,
-            github_url: d.github_url.clone(),
-            website_url: None,
-            default_editor: None,
-            default_terminal: None,
+            github_url: match &restored {
+                Some(f) => f.github_url.clone(),
+                None => d.github_url.clone(),
+            },
+            website_url: restored.as_ref().and_then(|f| f.website_url.clone()),
+            default_editor: restored.as_ref().and_then(|f| f.default_editor.clone()),
+            default_terminal: restored.as_ref().and_then(|f| f.default_terminal.clone()),
             default_command_id: None,
             last_opened: None,
             created_at: now,
             updated_at: now,
         },
     )?;
-    let commands = d.commands.iter().take(MAX_STARTER_COMMANDS);
-    let mut command_count = 0;
-    for (i, c) in commands.enumerate() {
+    let commands: Vec<ProjectFileCommand> = match &restored {
+        Some(f) => f.commands.clone(),
+        None => d
+            .commands
+            .iter()
+            .take(MAX_STARTER_COMMANDS)
+            .map(|c| ProjectFileCommand { label: c.label.clone(), command: c.command.clone(), cwd: None, source: Some(c.source.clone()) })
+            .collect(),
+    };
+    for (i, c) in commands.iter().enumerate() {
         db::save_command(
             &db,
             &db::Command {
@@ -347,13 +367,29 @@ async fn add(path_arg: Option<&str>) -> Result<()> {
                 project_id: saved.id.clone(),
                 label: c.label.clone(),
                 command: c.command.clone(),
-                cwd: None,
-                source: "auto".into(),
+                cwd: c.cwd.clone(),
+                source: c.source.clone().unwrap_or_else(|| "auto".into()),
                 sort: i as i64,
             },
         )?;
-        command_count += 1;
     }
+    let command_count = commands.len();
+    let wrote_file = restored.is_none()
+        && project_file::write(
+            &dir,
+            &ProjectFile {
+                name: saved.name.clone(),
+                description: saved.description.clone(),
+                kind: Some(saved.kind.clone()),
+                github_url: saved.github_url.clone(),
+                website_url: saved.website_url.clone(),
+                default_editor: saved.default_editor.clone(),
+                default_terminal: saved.default_terminal.clone(),
+                commands,
+            },
+        )
+        .map_err(|e| eprintln!("warning: could not write {}: {e}", project_file::FILE_NAME))
+        .is_ok();
     let (entries, truncated) = files::scan_files(&dir);
     files::store_files(&db, &saved.id, &entries)?;
 
@@ -362,8 +398,13 @@ async fn add(path_arg: Option<&str>) -> Result<()> {
     if let Some(url) = &saved.github_url {
         println!("  GitHub:    {url}");
     }
-    println!("  Commands:  {command_count} detected");
+    println!("  Commands:  {command_count} {}", if restored.is_some() { "restored" } else { "detected" });
     println!("  Files:     {} indexed{}", entries.len(), if truncated { " (list truncated)" } else { "" });
+    if restored.is_some() {
+        println!("  Settings:  restored from {}", project_file::FILE_NAME);
+    } else if wrote_file {
+        println!("  Settings:  saved to {}", project_file::FILE_NAME);
+    }
     Ok(())
 }
 

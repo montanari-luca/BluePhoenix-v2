@@ -12,6 +12,7 @@ import type {
   FileEntry,
   GitStatus,
   Project,
+  ProjectFile,
   ProjectSummary,
   Provider,
   Settings,
@@ -106,6 +107,8 @@ export const api = {
   files: (projectId: string, query?: string, limit?: number) =>
     invoke<FileEntry[]>("files_list", { projectId, query, limit }),
   filesCount: (projectId: string) => invoke<number>("files_count", { projectId }),
+  projectFileRead: (path: string) => invoke<ProjectFile | null>("project_file_read", { path }),
+  projectFileWrite: (path: string, file: ProjectFile) => invoke<void>("project_file_write", { path, file }),
 
   // ai
   providers: () => invoke<Provider[]>("ai_providers"),

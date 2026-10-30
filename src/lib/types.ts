@@ -124,6 +124,19 @@ export interface DetectedCommand {
   label: string;
   command: string;
   source: string;
+  cwd?: string | null;
+}
+
+/** Contents of a project's `.bluephoenix` file. */
+export interface ProjectFile {
+  name: string;
+  description: string | null;
+  kind: string | null;
+  githubUrl: string | null;
+  websiteUrl: string | null;
+  defaultEditor: string | null;
+  defaultTerminal: string | null;
+  commands: { label: string; command: string; cwd: string | null; source: string | null }[];
 }
 
 export interface Detected {

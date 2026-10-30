@@ -38,7 +38,7 @@ If a local provider (Ollama or LM Studio) is selected and not running, it is sta
 
 ### `bluephoenix add`
 
-Adds the current folder (or `bluephoenix add <path>`) as a project, exactly like **Add project** in the app: it detects the type, description, GitHub remote and build commands, then indexes the files. A folder that is already a project is left alone.
+Adds the current folder (or `bluephoenix add <path>`) as a project, exactly like **Add project** in the app: it detects the type, description, GitHub remote and build commands, then indexes the files. A folder that is already a project is left alone. If the folder has a `.bluephoenix` file (see [Projects](projects.md#the-bluephoenix-file)), its settings and commands are restored from it; otherwise one is created.
 
 If BluePhoenix is open, the new project appears when you switch back to its window.
 

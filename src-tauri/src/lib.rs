@@ -9,6 +9,7 @@ mod error;
 mod files;
 mod git;
 mod launch;
+mod project_file;
 mod pty;
 mod sync;
 mod updater;
@@ -194,6 +195,8 @@ pub fn run() {
             files::files_index,
             files::files_list,
             files::files_count,
+            project_file::project_file_read,
+            project_file::project_file_write,
             // ai
             ai::ai_providers,
             ai::ai_models,
