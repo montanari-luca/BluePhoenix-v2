@@ -58,6 +58,8 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
     setPicked(new Set());
   }, [isOpen, editing]);
 
+  const allPicked = detected.length > 0 && detected.every((c) => picked.has(c.command));
+
   const set = (k: keyof FormState) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function chooseFolder() {
@@ -272,9 +274,19 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="label !mb-0">Commands found ({detected.length})</span>
-                <button className="btn btn-sm" onClick={scanWithAi} disabled={aiBusy}>
-                  {aiBusy ? <Spinner size={13} /> : <Sparkles size={13} />} Scan with AI
-                </button>
+                <div className="flex items-center gap-2">
+                  {detected.length > 0 && (
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => setPicked(allPicked ? new Set() : new Set(detected.map((c) => c.command)))}
+                    >
+                      {allPicked ? "Deselect all" : "Select all"}
+                    </button>
+                  )}
+                  <button className="btn btn-sm" onClick={scanWithAi} disabled={aiBusy}>
+                    {aiBusy ? <Spinner size={13} /> : <Sparkles size={13} />} Scan with AI
+                  </button>
+                </div>
               </div>
               {detected.length === 0 ? (
                 <p className="text-xs text-[var(--fg-faint)]">
