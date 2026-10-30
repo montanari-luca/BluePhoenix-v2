@@ -32,8 +32,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.astrodev.bluephoenix.ios
         PRODUCT_NAME: BluePhoenix
-        MARKETING_VERSION: "0.2.1"
-        CURRENT_PROJECT_VERSION: "0.2.1"
+        MARKETING_VERSION: "0.2.2"
+        CURRENT_PROJECT_VERSION: "0.2.2"
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: BluePhoenix
