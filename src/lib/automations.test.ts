@@ -33,6 +33,13 @@ describe("templates", () => {
     expect(a).toMatchObject({ trigger: "launch", repeatHours: 48, kindFilter: "Tauri", idleHours: 48, commands: "cd src-tauri && cargo clean" });
   });
 
+  it("Package audit runs on every launch and detects the package manager", () => {
+    const a = fromTemplate(AUTOMATION_TEMPLATES.find((t) => t.id === "package-audit")!);
+    expect(a).toMatchObject({ trigger: "launch", repeatHours: null, targetMode: "all", kindFilter: null });
+    for (const pm of ["pnpm-lock.yaml", "yarn.lock", "bun.lock"]) expect(a.commands).toContain(pm);
+    expect(a.commands).toContain('$PM install && $PM audit');
+  });
+
   it("Git pull runs every launch on repos", () => {
     const a = fromTemplate(AUTOMATION_TEMPLATES.find((t) => t.id === "git-pull")!);
     expect(a).toMatchObject({ trigger: "launch", repeatHours: null, targetMode: "all", requireGitRepo: true });

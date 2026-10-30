@@ -108,6 +108,32 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       commands: "rm -rf node_modules",
     },
   },
+  {
+    id: "package-audit",
+    fields: {
+      name: "Package audit",
+      description: "At every launch, install dependencies and audit them with the project's package manager (auto-detected)",
+      trigger: "launch",
+      targetMode: "all",
+      commands: [
+        'PM="" # leave empty to auto-detect from the lockfile, or set npm, pnpm, yarn or bun',
+        '[ -f package.json ] || { echo "No package.json, skipping."; exit 0; }',
+        'if [ -z "$PM" ]; then',
+        "  if [ -f pnpm-lock.yaml ]; then PM=pnpm",
+        "  elif [ -f yarn.lock ]; then PM=yarn",
+        "  elif [ -f bun.lock ] || [ -f bun.lockb ]; then PM=bun",
+        "  else PM=npm",
+        "  fi",
+        "fi",
+        'echo "Using $PM"',
+        'if [ "$PM" = yarn ] && [ -f .yarnrc.yml ]; then',
+        "  yarn install && yarn npm audit",
+        "else",
+        '  $PM install && $PM audit',
+        "fi",
+      ].join("\n"),
+    },
+  },
 ];
 
 export function fromTemplate(t: AutomationTemplate): Automation {

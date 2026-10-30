@@ -55,6 +55,7 @@ Skipped projects are not marked as done, so they are checked again next time. **
 | Git fetch all | Every 6h at launch, `git fetch --all --prune` in git projects. |
 | Rust target cleanup | Every 48h at launch, `cargo clean` in Rust projects not edited for 48h. |
 | Node cleanup | Weekly at launch, removes `node_modules` from Node.js projects not edited for 14 days. Reinstall when you return. |
+| Package audit | At every launch, runs install and audit in Node projects with the package manager found from the lockfile (pnpm, yarn, bun, otherwise npm). To force one, set `PM` on the first line of the commands, for example `PM="pnpm"`. A run is marked failed when the audit finds vulnerabilities; the report is in the run output. |
 
 The templates use POSIX shell syntax. On Windows, commands run in PowerShell, so edit them first (for example, `Remove-Item -Recurse node_modules`).
 
