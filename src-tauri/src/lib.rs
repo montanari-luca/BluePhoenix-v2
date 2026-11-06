@@ -9,6 +9,8 @@ mod error;
 mod files;
 mod fork_sync;
 mod git;
+mod icons;
+mod initializer;
 mod launch;
 mod project_file;
 mod pty;
@@ -109,6 +111,7 @@ pub fn run() {
         .manage(sync::SyncGuard::default())
         .manage(automation_runtime::AutomationState::default())
         .manage(fork_sync::ForkState::default())
+        .manage(initializer::InitState::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -230,6 +233,12 @@ pub fn run() {
             fork_sync::fork_list,
             fork_sync::fork_save,
             fork_sync::fork_check,
+            // new project wizard
+            initializer::init_run,
+            initializer::init_cancel,
+            initializer::init_tools,
+            initializer::init_preflight,
+            icons::init_icon_info,
             // updater
             updater::check_update,
             updater::download_update,

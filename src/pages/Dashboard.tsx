@@ -1,7 +1,8 @@
-import { FolderPlus, Search, Star } from "lucide-react";
+import { FolderPlus, Search, Sparkles, Star } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { removeProject } from "../lib/actions";
 import { ProjectCard } from "../components/ProjectCard";
+import { NewProjectDialog } from "../components/NewProjectDialog";
 import { ProjectDialog } from "../components/ProjectDialog";
 import { Empty, Segmented, useConfirm } from "../components/ui";
 import { Logo } from "../components/TitleBar";
@@ -14,6 +15,8 @@ export default function Dashboard() {
   const refreshAll = useStore((s) => s.refreshAllStatuses);
   const addOpen = useStore((s) => s.addProjectOpen);
   const setAdd = useStore((s) => s.setAddProject);
+  const newOpen = useStore((s) => s.newProjectOpen);
+  const setNew = useStore((s) => s.setNewProject);
   const [editing, setEditing] = useState<Project | null>(null);
   const [filter, setFilter] = useState<"all" | "favorites">("all");
   const [query, setQuery] = useState("");
@@ -65,8 +68,11 @@ export default function Dashboard() {
             { value: "favorites", label: "★ Favorites" },
           ]}
         />
-        <button className="btn btn-primary" onClick={() => setAdd(true)}>
+        <button className="btn" onClick={() => setAdd(true)}>
           <FolderPlus size={15} /> Add project
+        </button>
+        <button className="btn btn-primary" onClick={() => setNew(true)}>
+          <Sparkles size={15} /> New project
         </button>
       </div>
 
@@ -75,9 +81,12 @@ export default function Dashboard() {
           <div className="glass mx-auto mt-10 max-w-xl">
             <Empty icon={<Logo size={54} />} title="Welcome to BluePhoenix">
               Add your first project to see its git branch, time tracked, to-dos and one-click actions in one place.
-              <div className="mt-4">
+              <div className="mt-4 flex justify-center gap-2">
                 <button className="btn btn-primary" onClick={() => setAdd(true)}>
                   <FolderPlus size={15} /> Add your first project
+                </button>
+                <button className="btn" onClick={() => setNew(true)}>
+                  <Sparkles size={15} /> Start a new one
                 </button>
               </div>
             </Empty>
@@ -95,6 +104,7 @@ export default function Dashboard() {
         )}
       </div>
 
+      <NewProjectDialog open={newOpen} onClose={() => setNew(false)} />
       <ProjectDialog open={addOpen} onClose={() => setAdd(false)} editing={null} />
       <ProjectDialog open={!!editing} onClose={() => setEditing(null)} editing={editing} />
       {node}

@@ -266,3 +266,33 @@ export interface ForkSync {
   ahead: number;
   message: string | null;
 }
+
+// ---------- new project wizard ----------
+
+export interface InitResult {
+  ok: boolean;
+  cancelled: boolean;
+  path: string;
+  failedStep: number | null;
+  error: string | null;
+}
+
+export interface InitProgress {
+  runId: string;
+  step: number;
+  status: "start" | "ok" | "warn" | "error" | "log";
+  line: string | null;
+}
+
+export interface IconInfo {
+  width: number;
+  height: number;
+  dataUrl: string;
+}
+
+export interface Preflight {
+  path: string;
+  exists: boolean;
+  empty: boolean;
+  parentExists: boolean;
+}
