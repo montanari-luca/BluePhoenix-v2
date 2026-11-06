@@ -88,7 +88,7 @@ Frosted glass, a soft gradient, a custom title bar and a **light and dark theme*
 
    > Builds are not code-signed yet. On macOS right-click the app and choose **Open** the first time. On Windows choose **More info → Run anyway**.
 
-2. **Add a project**: click **Add project**, pick its folder, and BluePhoenix detects the type, GitHub link and commands. Tracking a university course? Choose **Track something without a folder**.
+2. **Add a project**: click **Add project**, pick its folder, and BluePhoenix detects the type, GitHub link and commands. Tracking a university course? Choose **Track something without a folder**. Starting from scratch? **New project** scaffolds Tauri v2, React, Next.js, Astro, SwiftUI and more, with dependencies, icons for every platform and a git repository.
 3. **Optional**: connect AI in **Settings → AI** and cloud sync in **Settings → Cloud sync**.
 
 BluePhoenix checks for updates when it starts and shows a button when a new version is out. It downloads the installer for you.

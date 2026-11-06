@@ -39,6 +39,7 @@ export function CommandPalette() {
   const loadCommands = useStore((s) => s.loadCommands);
   const setSetting = useStore((s) => s.setSetting);
   const setAdd = useStore((s) => s.setAddProject);
+  const setNew = useStore((s) => s.setNewProject);
   const refreshAll = useStore((s) => s.refreshAllStatuses);
   const toast = useStore((s) => s.toast);
   const setUpdate = useStore((s) => s.setUpdate);
@@ -130,6 +131,7 @@ export function CommandPalette() {
       heading: "General",
       items: [
         { id: "add", label: "Add project…", icon: <FolderPlus size={15} />, run: () => { nav("/"); setAdd(true); } },
+        { id: "new", label: "New project…", icon: <Sparkles size={15} />, run: () => { nav("/"); setNew(true); } },
         { id: "refresh", label: "Refresh all git statuses", icon: <RefreshCw size={15} />, run: () => void refreshAll() },
         { id: "fetch-all", label: "Fetch all projects", icon: <RefreshCw size={15} />, run: async () => { await Promise.all(projects.filter(hasFolder).map((p) => gitAction(p, "fetch"))); } },
         { id: "theme-light", label: "Theme: Light", icon: <Sun size={15} />, run: () => void setSetting("theme", "light") },
@@ -151,7 +153,7 @@ export function CommandPalette() {
       ],
     });
     return g.filter((x) => x.items.length > 0);
-  }, [current, projects, editors, terminals, cmdsByProject, nav, setAdd, refreshAll, setSetting, toast, setUpdate]);
+  }, [current, projects, editors, terminals, cmdsByProject, nav, setAdd, setNew, refreshAll, setSetting, toast, setUpdate]);
 
   if (!open) return null;
   const close = () => setOpen(false);

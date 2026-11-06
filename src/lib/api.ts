@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { Step } from "./initializer";
 import type {
   AppInfo,
   Automation,
@@ -11,6 +12,9 @@ import type {
   Detected,
   FileEntry,
   GitStatus,
+  IconInfo,
+  InitResult,
+  Preflight,
   Project,
   ProjectFile,
   ProjectSummary,
@@ -133,6 +137,14 @@ export const api = {
   cliStatus: () => invoke<CliStatus>("cli_status"),
   cliInstall: () => invoke<CliStatus>("cli_install"),
   cliUninstall: () => invoke<CliStatus>("cli_uninstall"),
+
+  // new project wizard
+  initRun: (plan: { runId: string; parent: string; folder: string; steps: Step[]; startAt: number }) =>
+    invoke<InitResult>("init_run", { plan }),
+  initCancel: (runId: string) => invoke<void>("init_cancel", { runId }),
+  initTools: (programs: string[]) => invoke<Record<string, boolean>>("init_tools", { programs }),
+  initPreflight: (parent: string, folder: string) => invoke<Preflight>("init_preflight", { parent, folder }),
+  iconInfo: (path: string) => invoke<IconInfo>("init_icon_info", { path }),
 
   // updater
   checkUpdate: () => invoke<UpdateInfo>("check_update"),
