@@ -1,6 +1,7 @@
-import { CalendarClock, Clock, Code2, EllipsisVertical, GitBranch, ListTodo, Play, Star } from "lucide-react";
+import { CalendarClock, Clock, Code2, EllipsisVertical, GitBranch, GitFork, ListTodo, Play, Star } from "lucide-react";
 import { useEffect } from "react";
 import { defaultCommand, defaultEditorId, editorName, hasFolder, openEditor, runCommand, toggleFavorite } from "../lib/actions";
+import { forkLabel, forkTone } from "../lib/fork";
 import { branchState, formatMinutes, timeAgo, toneColor } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { ProjectSummary } from "../lib/types";
@@ -11,6 +12,7 @@ export function ProjectCard({ project: p, onRemove, onEdit }: { project: Project
   const status = useStore((s) => s.statuses[p.id]);
   const cmds = useStore((s) => s.commands[p.id]);
   const busy = useStore((s) => s.busy[p.id]);
+  const fork = useStore((s) => s.forks[p.id]);
   const settings = useStore((s) => s.settings);
   const editors = useStore((s) => s.editors);
   const loadCommands = useStore((s) => s.loadCommands);
@@ -114,6 +116,14 @@ export function ProjectCard({ project: p, onRemove, onEdit }: { project: Project
             {p.doneTodos > 0 && <span className="text-[var(--fg-faint)]"> · {p.doneTodos} done</span>}
           </span>
         </li>
+        {fork?.isFork && (
+          <li className="flex items-center gap-2" title={fork.message ?? undefined}>
+            <GitFork size={14} />
+            <span className="truncate" style={{ color: fork.status ? toneColor(forkTone(fork.status)) : undefined }}>
+              {forkLabel(fork)}
+            </span>
+          </li>
+        )}
         <li className="flex items-center gap-2">
           <CalendarClock size={14} />
           <span>Updated {timeAgo(Math.max(p.lastActivity, status?.lastCommitTs ?? 0))}</span>

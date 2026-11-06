@@ -77,6 +77,18 @@ CREATE TABLE automation_state(
 );
 "#;
 
+// Fork upstream sync settings and the last check result. Local-only (not part of cloud sync).
+const MIGRATION_3: &str = r#"
+CREATE TABLE fork_sync(
+  project_id TEXT PRIMARY KEY, is_fork INTEGER NOT NULL DEFAULT 0,
+  upstream_remote TEXT NOT NULL DEFAULT 'upstream', upstream_url TEXT, upstream_branch TEXT,
+  auto_check INTEGER NOT NULL DEFAULT 0, interval_minutes INTEGER NOT NULL DEFAULT 1440,
+  auto_pull INTEGER NOT NULL DEFAULT 0,
+  last_check INTEGER, last_pull INTEGER, status TEXT, behind INTEGER NOT NULL DEFAULT 0,
+  ahead INTEGER NOT NULL DEFAULT 0, message TEXT
+);
+"#;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -90,6 +102,10 @@ impl Db {
         if version < 2 {
             conn.execute_batch(MIGRATION_2)?;
             conn.pragma_update(None, "user_version", 2)?;
+        }
+        if version < 3 {
+            conn.execute_batch(MIGRATION_3)?;
+            conn.pragma_update(None, "user_version", 3)?;
         }
         Ok(Db(Mutex::new(conn)))
     }
@@ -275,6 +291,7 @@ pub async fn project_remove(db: State<'_, Db>, id: String) -> Result<()> {
         )?;
     }
     conn.execute("DELETE FROM files WHERE project_id=?1", params![id])?;
+    conn.execute("DELETE FROM fork_sync WHERE project_id=?1", params![id])?;
     Ok(())
 }
 

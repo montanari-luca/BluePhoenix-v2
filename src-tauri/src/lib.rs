@@ -7,6 +7,7 @@ mod db;
 mod detect;
 mod error;
 mod files;
+mod fork_sync;
 mod git;
 mod launch;
 mod project_file;
@@ -107,6 +108,7 @@ pub fn run() {
         .manage(ai::LlamaState::default())
         .manage(sync::SyncGuard::default())
         .manage(automation_runtime::AutomationState::default())
+        .manage(fork_sync::ForkState::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -115,6 +117,7 @@ pub fn run() {
             build_main_window(app)?;
             sync::start_background(app.handle().clone());
             automation_runtime::start_background(app.handle().clone());
+            fork_sync::start_background(app.handle().clone());
             {
                 // Installs / repairs the `bluephoenix` terminal command in the background.
                 let handle = app.handle().clone();
@@ -222,6 +225,11 @@ pub fn run() {
             automations::automation_delete,
             automations::automation_runs,
             automation_runtime::automation_run,
+            // fork upstream sync
+            fork_sync::fork_get,
+            fork_sync::fork_list,
+            fork_sync::fork_save,
+            fork_sync::fork_check,
             // updater
             updater::check_update,
             updater::download_update,

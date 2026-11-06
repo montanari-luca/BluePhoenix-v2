@@ -245,3 +245,24 @@ export interface AutomationSummary {
   failed: number;
   skipped: { project: string; reason: string }[];
 }
+
+export type ForkStatus = "up-to-date" | "safe" | "conflicting" | "pulled" | "unknown" | "error";
+
+/** A GitHub fork's upstream sync settings and the result of the last check. */
+export interface ForkSync {
+  projectId: string;
+  isFork: boolean;
+  upstreamRemote: string;
+  upstreamUrl: string | null;
+  /** Branch to compare with; the current branch when empty. */
+  upstreamBranch: string | null;
+  autoCheck: boolean;
+  intervalMinutes: number;
+  autoPull: boolean;
+  lastCheck: number | null;
+  lastPull: number | null;
+  status: ForkStatus | null;
+  behind: number;
+  ahead: number;
+  message: string | null;
+}

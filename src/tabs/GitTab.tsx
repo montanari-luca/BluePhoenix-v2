@@ -6,6 +6,7 @@ import { api, errMsg } from "../lib/api";
 import { formatDateTime, timeAgo } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { Branch, Change, Commit, Project } from "../lib/types";
+import { ForkStatusCard } from "../components/ForkSync";
 import { Dropdown, Empty, Modal, Segmented, Spinner, useConfirm } from "../components/ui";
 
 type View = "changes" | "branches" | "history" | "stashes";
@@ -122,6 +123,7 @@ export default function GitTab({ project: p }: { project: Project }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <ForkStatusCard project={p} />
       <div className="flex flex-wrap items-center gap-3">
         <Segmented
           value={view}

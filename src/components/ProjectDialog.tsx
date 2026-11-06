@@ -5,7 +5,9 @@ import { api, errMsg, uid } from "../lib/api";
 import { scanCommands } from "../lib/ai";
 import { goToProject } from "./projectMenu";
 import { useStore } from "../lib/store";
-import type { Detected, DetectedCommand, Project } from "../lib/types";
+import { blankFork } from "../lib/fork";
+import type { Detected, DetectedCommand, ForkSync, Project } from "../lib/types";
+import { ForkSettings } from "./ForkSync";
 import { Field, Modal, Spinner } from "./ui";
 
 const KINDS = ["Course", "Research", "Design", "Writing", "Personal", "Other"];
@@ -33,6 +35,9 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
   const [aiBusy, setAiBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<"choose" | "details">("choose");
+  const [fork, setFork] = useState<ForkSync>(blankFork(""));
+  // A project that was a fork when the dialog opened keeps its row even if the switch is turned off.
+  const [wasFork, setWasFork] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,7 +53,23 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
       setEditor(editing.defaultEditor ?? "");
       setTerminal(editing.defaultTerminal ?? "");
       setStep("details");
+      setWasFork(false);
+      setFork(blankFork(editing.id));
+      let stale = false;
+      api
+        .forkGet(editing.id)
+        .then((f) => {
+          if (stale) return;
+          setFork(f);
+          setWasFork(f.isFork);
+        })
+        .catch(() => undefined);
+      return () => {
+        stale = true;
+      };
     } else {
+      setFork(blankFork(""));
+      setWasFork(false);
       setForm(EMPTY);
       setEditor("");
       setTerminal("");
@@ -190,6 +211,17 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
             .catch(() => undefined);
         }
       }
+      if (fork.isFork || wasFork) {
+        const savedFork = await api.saveFork({ ...fork, projectId: saved.id });
+        useStore.getState().setForks([savedFork]);
+        // Look at upstream right away so the new fork shows a status.
+        if (savedFork.isFork && saved.path) {
+          void api
+            .checkFork(saved.id, false)
+            .then((r) => useStore.getState().setForks([r]))
+            .catch(() => undefined);
+        }
+      }
       await loadProjects();
       void useStore.getState().loadCommands(saved.id);
       void refreshStatus(saved.id);
@@ -305,6 +337,8 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
               </select>
             </Field>
           </div>
+
+          {form.path.trim() && <ForkSettings value={fork} onChange={setFork} />}
 
           {!editing && form.path && (
             <div>

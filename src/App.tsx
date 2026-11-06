@@ -5,7 +5,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { TitleBar } from "./components/TitleBar";
 import { Toasts } from "./components/ui";
 import { api } from "./lib/api";
-import type { AutomationSummary } from "./lib/types";
+import type { AutomationSummary, ForkSync } from "./lib/types";
 import { setNavigator } from "./lib/actions";
 import { useStore } from "./lib/store";
 import Automations from "./pages/Automations";
@@ -39,6 +39,16 @@ function Shell() {
       for (const s of e.payload) {
         if (s.failed > 0) toast({ kind: "error", title: `${s.name}: ${s.failed} failed`, detail: "Open Automations for the run log." });
       }
+    });
+    return () => void un.then((f) => f());
+  }, []);
+
+  // Fork upstream checks run in the background; keep the badges and the Git tab current.
+  useEffect(() => {
+    const un = listen<ForkSync[]>("fork-sync-finished", (e) => {
+      const { setForks, refreshStatus } = useStore.getState();
+      setForks(e.payload);
+      for (const f of e.payload) if (f.status === "pulled") void refreshStatus(f.projectId);
     });
     return () => void un.then((f) => f());
   }, []);

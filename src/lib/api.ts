@@ -10,6 +10,7 @@ import type {
   Commit,
   Detected,
   FileEntry,
+  ForkSync,
   GitStatus,
   Project,
   ProjectFile,
@@ -57,6 +58,12 @@ export const api = {
   deleteAutomation: (id: string) => invoke<void>("automation_delete", { id }),
   automationRuns: (id: string) => invoke<AutomationRun[]>("automation_runs", { id }),
   runAutomation: (id: string, projectId?: string) => invoke<AutomationSummary>("automation_run", { id, projectId }),
+
+  // fork upstream sync
+  forkGet: (projectId: string) => invoke<ForkSync>("fork_get", { projectId }),
+  forks: () => invoke<ForkSync[]>("fork_list"),
+  saveFork: (config: ForkSync) => invoke<ForkSync>("fork_save", { config }),
+  checkFork: (projectId: string, pull: boolean) => invoke<ForkSync>("fork_check", { projectId, pull }),
 
   // git
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),

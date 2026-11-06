@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { api, errMsg } from "./api";
 import { applyTheme } from "./theme";
-import type { AppInfo, Automation, Command, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
+import type { AppInfo, Automation, Command, ForkSync, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
 
 export interface Toast {
   id: number;
@@ -18,6 +18,8 @@ interface State {
   statuses: Record<string, GitStatus | null>;
   commands: Record<string, Command[]>;
   automations: Automation[];
+  /** Forks only, by project id. */
+  forks: Record<string, ForkSync>;
   editors: AppInfo[];
   terminals: AppInfo[];
   toasts: Toast[];
@@ -33,6 +35,8 @@ interface State {
   refreshAllStatuses: () => Promise<void>;
   loadCommands: (id: string) => Promise<Command[]>;
   loadAutomations: () => Promise<void>;
+  loadForks: () => Promise<void>;
+  setForks: (list: ForkSync[]) => void;
   setSetting: (key: string, value: string) => Promise<void>;
   toast: (t: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
@@ -52,6 +56,7 @@ export const useStore = create<State>((set, get) => ({
   statuses: {},
   commands: {},
   automations: [],
+  forks: {},
   editors: [],
   terminals: [],
   toasts: [],
@@ -73,6 +78,7 @@ export const useStore = create<State>((set, get) => ({
       set({ system, settings, editors, terminals });
       applyTheme(settings.theme ?? "system", settings.accent);
       await get().loadProjects();
+      void get().loadForks();
     } catch (e) {
       get().toast({ kind: "error", title: "Could not start BluePhoenix", detail: errMsg(e) });
     } finally {
@@ -119,6 +125,24 @@ export const useStore = create<State>((set, get) => ({
       get().toast({ kind: "error", title: "Could not load automations", detail: errMsg(e) });
     }
   },
+
+  loadForks: async () => {
+    try {
+      get().setForks(await api.forks());
+    } catch {
+      /* the fork badge is optional */
+    }
+  },
+
+  setForks: (list) =>
+    set((st) => {
+      const forks = { ...st.forks };
+      for (const f of list) {
+        if (f.isFork) forks[f.projectId] = f;
+        else delete forks[f.projectId];
+      }
+      return { forks };
+    }),
 
   setSetting: async (key, value) => {
     set((st) => ({ settings: { ...st.settings, [key]: value } }));

@@ -8,13 +8,14 @@ use crate::error::{err, Result};
 
 const MAX_TEXT: usize = 200_000;
 
-struct Out {
-    ok: bool,
-    stdout: String,
-    stderr: String,
+pub(crate) struct Out {
+    pub ok: bool,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
 }
 
-async fn exec(path: &str, args: &[&str], timeout_s: u64) -> Result<Out> {
+pub(crate) async fn exec(path: &str, args: &[&str], timeout_s: u64) -> Result<Out> {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(path)
@@ -45,6 +46,7 @@ async fn exec(path: &str, args: &[&str], timeout_s: u64) -> Result<Out> {
         .map_err(|_| format!("git {} timed out after {timeout_s}s", args.first().unwrap_or(&"")))??;
     Ok(Out {
         ok: output.status.success(),
+        code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     })
