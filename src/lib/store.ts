@@ -23,6 +23,7 @@ interface State {
   toasts: Toast[];
   paletteOpen: boolean;
   addProjectOpen: boolean;
+  newProjectOpen: boolean;
   /** project id -> label of the running action */
   busy: Record<string, string | undefined>;
   update: { latest: string; downloadUrl: string | null } | null;
@@ -38,6 +39,7 @@ interface State {
   dismissToast: (id: number) => void;
   setPalette: (open: boolean) => void;
   setAddProject: (open: boolean) => void;
+  setNewProject: (open: boolean) => void;
   setBusy: (id: string, label?: string) => void;
   setUpdate: (u: State["update"]) => void;
 }
@@ -57,6 +59,7 @@ export const useStore = create<State>((set, get) => ({
   toasts: [],
   paletteOpen: false,
   addProjectOpen: false,
+  newProjectOpen: false,
   busy: {},
   update: null,
 
@@ -137,6 +140,7 @@ export const useStore = create<State>((set, get) => ({
   dismissToast: (id) => set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) })),
   setPalette: (paletteOpen) => set({ paletteOpen }),
   setAddProject: (addProjectOpen) => set({ addProjectOpen }),
+  setNewProject: (newProjectOpen) => set({ newProjectOpen }),
   setBusy: (id, label) => set((st) => ({ busy: { ...st.busy, [id]: label } })),
   setUpdate: (update) => set({ update }),
 }));

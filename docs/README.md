@@ -7,6 +7,7 @@ BluePhoenix is a project manager for developers (and for anything else you work 
 1. [Getting started](getting-started.md): install BluePhoenix and add your first project
 2. [The dashboard](dashboard.md): what the project cards show and do
 3. [Projects](projects.md): add, edit, favourite and remove projects
+4. [New project wizard](new-project.md): scaffold a Tauri, React, Next.js, Astro, SwiftUI or other app with dependencies, icons and git
 
 **Everyday work**
 

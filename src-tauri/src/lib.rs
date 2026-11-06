@@ -8,6 +8,8 @@ mod detect;
 mod error;
 mod files;
 mod git;
+mod icons;
+mod initializer;
 mod launch;
 mod project_file;
 mod pty;
@@ -107,6 +109,7 @@ pub fn run() {
         .manage(ai::LlamaState::default())
         .manage(sync::SyncGuard::default())
         .manage(automation_runtime::AutomationState::default())
+        .manage(initializer::InitState::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -222,6 +225,12 @@ pub fn run() {
             automations::automation_delete,
             automations::automation_runs,
             automation_runtime::automation_run,
+            // new project wizard
+            initializer::init_run,
+            initializer::init_cancel,
+            initializer::init_tools,
+            initializer::init_preflight,
+            icons::init_icon_info,
             // updater
             updater::check_update,
             updater::download_update,
