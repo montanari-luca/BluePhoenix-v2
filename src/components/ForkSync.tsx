@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { api, errMsg } from "../lib/api";
 import { describeInterval, forkCanPull, forkLabel, forkPredictionNotice, forkTone, INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, splitInterval, toMinutes, type IntervalUnit } from "../lib/fork";
 import { timeAgo, toneColor } from "../lib/format";
-import { useStore } from "../lib/store";
+import { useStore, logError } from "../lib/store";
 import type { ForkSync, Project } from "../lib/types";
 import { Field, Pill, Spinner, Toggle } from "./ui";
 
@@ -146,7 +146,7 @@ export function ForkStatusCard({ project: p }: { project: Project }) {
   const [busy, setBusy] = useState<"check" | "pull" | null>(null);
 
   useEffect(() => {
-    api.forkGet(p.id).then((f) => setForks([f])).catch(() => undefined);
+    api.forkGet(p.id).then((f) => setForks([f])).catch(logError("load fork settings"));
   }, [p.id, setForks]);
 
   if (!fork?.isFork) return null;

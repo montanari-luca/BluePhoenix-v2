@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::{active_projects, list_projects, now, Db};
-use crate::error::{err, Result};
+use crate::error::{err, LockExt, Result};
 use crate::git::exec;
 use crate::scheduler::Job;
 
@@ -106,7 +106,7 @@ fn from_row(r: &Row) -> rusqlite::Result<ForkSync> {
 }
 
 fn load(db: &Db, project_id: &str) -> Result<ForkSync> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let found = conn
         .query_row("SELECT * FROM fork_sync WHERE project_id=?1 AND deleted=0", params![project_id], from_row)
         .optional()?;
@@ -114,7 +114,7 @@ fn load(db: &Db, project_id: &str) -> Result<ForkSync> {
 }
 
 fn load_all(db: &Db) -> Result<Vec<ForkSync>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare("SELECT * FROM fork_sync WHERE is_fork=1 AND deleted=0")?;
     let rows = stmt.query_map([], from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
@@ -136,7 +136,7 @@ fn save(db: &Db, mut cfg: ForkSync) -> Result<ForkSync> {
         return err("That is not a valid branch name");
     }
     cfg.interval_minutes = cfg.interval_minutes.max(MIN_INTERVAL_MINUTES);
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute(
         // The settings sync to other devices (see `sync.rs`); `id` mirrors `project_id` for the sync engine.
         "INSERT INTO fork_sync(id,project_id,is_fork,upstream_remote,upstream_url,upstream_branch,auto_check,interval_minutes,auto_pull,
@@ -154,7 +154,7 @@ fn save(db: &Db, mut cfg: ForkSync) -> Result<ForkSync> {
 }
 
 fn store_result(db: &Db, r: &ForkSync) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute(
         "UPDATE fork_sync SET last_check=?2,last_pull=?3,status=?4,behind=?5,ahead=?6,message=?7 WHERE project_id=?1",
         params![r.project_id, r.last_check, r.last_pull, r.status, r.behind, r.ahead, r.message],
@@ -519,7 +519,7 @@ mod tests {
         git(&root, &["clone", upstream.to_str().unwrap(), "fork"]);
         let db = Db::open(&root.join("t.db")).unwrap();
         {
-            let conn = db.0.lock().unwrap();
+            let conn = db.0.lock_ok();
             conn.execute(
                 "INSERT INTO projects(id,name,path,kind,created_at,updated_at) VALUES('p1','Fork',?1,'Other',1,1)",
                 params![fork.to_str().unwrap()],

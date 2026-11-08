@@ -15,7 +15,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::{mpsc, watch};
 
-use crate::error::{err, AppError, Result};
+use crate::error::{err, AppError, LockExt, Result};
 use crate::icons;
 
 const STEP_TIMEOUT: Duration = Duration::from_secs(20 * 60);
@@ -538,19 +538,19 @@ async fn execute(plan: &Plan, sink: &Sink, cancel: &mut watch::Receiver<bool>) -
 #[tauri::command]
 pub async fn init_run(app: AppHandle, state: State<'_, InitState>, plan: Plan) -> Result<InitResult> {
     let (tx, mut cancel) = watch::channel(false);
-    state.runs.lock().unwrap().insert(plan.run_id.clone(), tx);
+    state.runs.lock_ok().insert(plan.run_id.clone(), tx);
     let run_id = plan.run_id.clone();
     let sink = move |step: usize, status: &str, line: Option<String>| {
         let _ = app.emit("init-progress", Progress { run_id: &run_id, step, status, line });
     };
     let result = execute(&plan, &sink, &mut cancel).await;
-    state.runs.lock().unwrap().remove(&plan.run_id);
+    state.runs.lock_ok().remove(&plan.run_id);
     result
 }
 
 #[tauri::command]
 pub fn init_cancel(state: State<'_, InitState>, run_id: String) {
-    if let Some(tx) = state.runs.lock().unwrap().get(&run_id) {
+    if let Some(tx) = state.runs.lock_ok().get(&run_id) {
         let _ = tx.send(true);
     }
 }
