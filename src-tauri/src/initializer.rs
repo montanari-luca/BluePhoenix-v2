@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use regex::Regex;
@@ -33,8 +33,6 @@ pub struct JsonEdit {
     pub value: serde_json::Value,
 }
 
-/// `label` is shown by the frontend (it builds the step list), the runner does not need it.
-#[allow(dead_code)]
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Step {
@@ -123,7 +121,6 @@ pub struct Preflight {
 type Sink = dyn Fn(usize, &str, Option<String>) + Send + Sync;
 
 fn strip_ansi(s: &str) -> String {
-    use std::sync::OnceLock;
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07").unwrap());
     re.replace_all(s, "").to_string()
@@ -136,6 +133,138 @@ fn safe_join(root: &Path, rel: &str) -> Result<PathBuf> {
         return err(format!("Path “{rel}” is outside the project"));
     }
     Ok(root.join(p))
+}
+
+/// `path` with symlinks resolved in the part of it that exists (the rest is appended as is).
+fn canonical_lenient(path: &Path) -> PathBuf {
+    for anc in path.ancestors() {
+        if let Ok(real) = anc.canonicalize() {
+            return real.join(path.strip_prefix(anc).unwrap_or(Path::new("")));
+        }
+    }
+    path.to_path_buf()
+}
+
+/// `root/rel`, rejected if it leaves `root`, either lexically (`..`, absolute paths) or through
+/// a symlink that already exists on disk. Returns the resolved path.
+fn inside(root: &Path, rel: &str) -> Result<PathBuf> {
+    safe_join(root, rel)?;
+    let base = canonical_lenient(root);
+    let mut cur = base.clone();
+    for c in Path::new(rel).components() {
+        let Component::Normal(name) = c else { continue };
+        cur.push(name);
+        match cur.canonicalize() {
+            Ok(real) => cur = real,
+            // A symlink that points nowhere could be created outside the project.
+            Err(_) if cur.symlink_metadata().is_ok() => return err(format!("Path “{rel}” is a broken link")),
+            Err(_) => {}
+        }
+        if !cur.starts_with(&base) {
+            return err(format!("Path “{rel}” is outside the project"));
+        }
+    }
+    Ok(cur)
+}
+
+/// Programs a `run` step may start. Shared with the frontend tests, which check that every
+/// built-in template only uses these.
+pub fn allowed_programs() -> &'static [String] {
+    #[derive(Deserialize)]
+    struct List {
+        programs: Vec<String>,
+    }
+    static LIST: OnceLock<Vec<String>> = OnceLock::new();
+    LIST.get_or_init(|| serde_json::from_str::<List>(include_str!("../init-programs.json")).expect("init-programs.json is valid").programs)
+}
+
+/// A `run` step's program must be a bare name on the allowlist; it is looked up on PATH.
+pub fn validate_program(program: &str) -> Result<()> {
+    if program.is_empty() || program.contains(['/', '\\', ':']) || program.starts_with('.') || Path::new(program).is_absolute() {
+        return err(format!("“{program}” must be a program name, not a path"));
+    }
+    if !allowed_programs().iter().any(|p| p == program) {
+        return err(format!("“{program}” is not one of the programs a project setup may run"));
+    }
+    Ok(())
+}
+
+/// The folder a `run` step runs in: `parent` (the folder the project is created in), `project`,
+/// or `project/<subfolder>`, which must stay inside the project.
+fn run_dir(cwd: Option<&str>, parent: &Path, root: &Path) -> Result<PathBuf> {
+    match cwd {
+        None | Some("parent") => Ok(parent.to_path_buf()),
+        Some("project") => Ok(canonical_lenient(root)),
+        Some(sub) => inside(root, sub.strip_prefix("project/").unwrap_or(sub)),
+    }
+}
+
+/// The project folder for a plan, or why the parent / folder name are not usable.
+fn plan_root(parent: &str, folder: &str) -> Result<PathBuf> {
+    if folder.is_empty() || folder.contains(['/', '\\']) || folder == ".." || folder == "." {
+        return err("Invalid project folder name");
+    }
+    let parent = Path::new(parent);
+    if !parent.is_absolute() {
+        return err("The project location must be an absolute path");
+    }
+    Ok(parent.join(folder))
+}
+
+/// Checks one step without running it: allowed programs only, and every folder and file it
+/// touches inside the project. `parent` is the folder the project is created in, `root` the
+/// project folder itself (it may not exist yet).
+pub fn validate_step(step: &Step, parent: &Path, root: &Path) -> Result<()> {
+    match step {
+        Step::Run { program, cwd, expects, .. } => {
+            validate_program(program)?;
+            run_dir(cwd.as_deref(), parent, root)?;
+            if let Some(rel) = expects {
+                inside(root, rel)?;
+            }
+        }
+        Step::Write { path, .. } => {
+            inside(root, path)?;
+        }
+        Step::JsonSet { file, .. } => {
+            inside(root, file)?;
+        }
+        Step::Replace { file, pattern, .. } => {
+            inside(root, file)?;
+            Regex::new(pattern).map_err(|e| format!("Bad pattern: {e}"))?;
+        }
+        Step::Icons { .. } => {}
+        Step::Git { branch, .. } => {
+            if branch.trim().is_empty() || branch.starts_with('-') {
+                return err(format!("“{branch}” is not a valid branch name"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Checks a whole plan before anything runs; the first bad step rejects all of it.
+pub fn validate_plan(plan: &Plan) -> Result<()> {
+    let root = plan_root(&plan.parent, &plan.folder)?;
+    let parent = Path::new(&plan.parent);
+    if plan.start_at > plan.steps.len() {
+        return err("Invalid starting step");
+    }
+    for (i, step) in plan.steps.iter().enumerate() {
+        validate_step(step, parent, &root).map_err(|e| format!("Step {} ({}): {e}", i + 1, step_label(step)))?;
+    }
+    Ok(())
+}
+
+fn step_label(step: &Step) -> &str {
+    match step {
+        Step::Run { label, .. }
+        | Step::Write { label, .. }
+        | Step::JsonSet { label, .. }
+        | Step::Replace { label, .. }
+        | Step::Icons { label, .. }
+        | Step::Git { label, .. } => label,
+    }
 }
 
 fn set_json_path(root: &mut serde_json::Value, path: &str, value: serde_json::Value) {
@@ -289,24 +418,22 @@ async fn run_step(
 ) -> Result<Option<String>> {
     match step {
         Step::Run { program, args, cwd, expects, .. } => {
-            let dir = match cwd.as_deref() {
-                None | Some("parent") => parent.to_path_buf(),
-                Some("project") => root.to_path_buf(),
-                Some(sub) => safe_join(root, sub.strip_prefix("project/").unwrap_or(sub))?,
-            };
+            // Checked again here: an earlier step may have created a symlink.
+            validate_program(program)?;
+            let dir = run_dir(cwd.as_deref(), parent, root)?;
             std::fs::create_dir_all(&dir)?;
             if !run_program(sink, i, program, args, &dir, cancel).await? {
                 return err(format!("{program} exited with an error"));
             }
-            if let Some(rel) = expects {
-                if !safe_join(root, rel)?.exists() {
-                    return err(format!("{program} finished without creating {rel}. Check the log above for what it asked for."));
-                }
+            if let Some(rel) = expects
+                && !inside(root, rel)?.exists()
+            {
+                return err(format!("{program} finished without creating {rel}. Check the log above for what it asked for."));
             }
             Ok(None)
         }
         Step::Write { path, contents, .. } => {
-            let p = safe_join(root, path)?;
+            let p = inside(root, path)?;
             if let Some(d) = p.parent() {
                 std::fs::create_dir_all(d)?;
             }
@@ -314,11 +441,11 @@ async fn run_step(
             Ok(None)
         }
         Step::JsonSet { file, sets, .. } => {
-            apply_json(&safe_join(root, file)?, sets)?;
+            apply_json(&inside(root, file)?, sets)?;
             Ok(None)
         }
         Step::Replace { file, pattern, replacement, .. } => {
-            if apply_replace(&safe_join(root, file)?, pattern, replacement)? {
+            if apply_replace(&inside(root, file)?, pattern, replacement)? {
                 Ok(None)
             } else {
                 Ok(Some(format!("Nothing to change in {file}")))
@@ -372,12 +499,11 @@ fn step_optional(step: &Step) -> bool {
 }
 
 async fn execute(plan: &Plan, sink: &Sink, cancel: &mut watch::Receiver<bool>) -> Result<InitResult> {
+    // The plan comes from the webview: reject all of it before running anything.
+    validate_plan(plan)?;
     let parent = PathBuf::from(&plan.parent);
-    if plan.folder.is_empty() || plan.folder.contains(['/', '\\']) || plan.folder == ".." || plan.folder == "." {
-        return err("Invalid project folder name");
-    }
     std::fs::create_dir_all(&parent)?;
-    let root = parent.join(&plan.folder);
+    let root = plan_root(&plan.parent, &plan.folder)?;
     // Scaffolders refuse to create a folder that already exists, even an empty one.
     if plan.start_at == 0 && root.is_dir() {
         let _ = std::fs::remove_dir(&root);
@@ -493,6 +619,107 @@ mod tests {
         assert!(text.contains("version = \"2.0.0\"") && text.contains("version = \"1\""));
         assert!(!apply_replace(&f, "nomatch", "x").unwrap());
         std::fs::remove_dir_all(dir).ok();
+    }
+
+    fn run(program: &str, cwd: Option<&str>) -> Step {
+        Step::Run { label: "x".into(), program: program.into(), args: vec![], cwd: cwd.map(String::from), optional: false, expects: None }
+    }
+
+    fn plan(parent: &Path, steps: Vec<Step>) -> Plan {
+        Plan { run_id: "t".into(), parent: parent.to_string_lossy().into(), folder: "app".into(), steps, start_at: 0 }
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bp-validate-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn allows_listed_programs() {
+        let parent = temp_dir("allowed");
+        for p in ["npm", "npx", "pnpm", "bunx", "cargo", "uv", "go", "flutter", "xcodegen", "gh"] {
+            assert!(validate_plan(&plan(&parent, vec![run(p, Some("parent")), run(p, Some("project")), run(p, Some("project/src-tauri"))])).is_ok(), "{p}");
+        }
+        std::fs::remove_dir_all(parent).ok();
+    }
+
+    #[test]
+    fn rejects_unlisted_programs() {
+        let parent = temp_dir("unlisted");
+        for p in ["sh", "bash", "curl", "osascript", "powershell", "rm", "", "NPM"] {
+            assert!(validate_program(p).is_err(), "{p}");
+        }
+        // One bad step rejects the whole plan, however late it comes.
+        let r = validate_plan(&plan(&parent, vec![run("npm", None), run("sh", Some("project"))]));
+        assert!(r.unwrap_err().to_string().starts_with("Step 2"));
+        std::fs::remove_dir_all(parent).ok();
+    }
+
+    #[test]
+    fn rejects_program_paths() {
+        for p in ["/bin/sh", "/usr/local/bin/npm", "./npm", "../npm", "bin/npm", "C:\\Windows\\cmd.exe", "C:npm", ".npm"] {
+            assert!(validate_program(p).unwrap_err().to_string().contains("not a path"), "{p}");
+        }
+    }
+
+    #[test]
+    fn rejects_working_folders_outside_the_project() {
+        let parent = temp_dir("cwd");
+        for cwd in ["project/../..", "project/../other", "..", "/etc", "project//etc", "project/a/../../b"] {
+            assert!(validate_plan(&plan(&parent, vec![run("npm", Some(cwd))])).is_err(), "{cwd}");
+        }
+        assert!(validate_plan(&plan(&parent, vec![run("npm", Some("project/a/b"))])).is_ok());
+        std::fs::remove_dir_all(parent).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinks_out_of_the_project() {
+        let parent = temp_dir("symlink");
+        let outside = temp_dir("symlink-target");
+        std::fs::create_dir_all(parent.join("app")).unwrap();
+        std::os::unix::fs::symlink(&outside, parent.join("app/escape")).unwrap();
+        std::os::unix::fs::symlink(parent.join("nowhere"), parent.join("app/dangling")).unwrap();
+        assert!(validate_plan(&plan(&parent, vec![run("npm", Some("project/escape"))])).is_err());
+        assert!(validate_plan(&plan(&parent, vec![run("npm", Some("project/escape/sub"))])).is_err());
+        assert!(validate_plan(&plan(&parent, vec![run("npm", Some("project/dangling"))])).is_err());
+        let write = Step::Write { label: "w".into(), path: "escape/x.txt".into(), contents: String::new() };
+        assert!(validate_plan(&plan(&parent, vec![write])).is_err());
+        std::fs::remove_dir_all(parent).ok();
+        std::fs::remove_dir_all(outside).ok();
+    }
+
+    #[test]
+    fn rejects_bad_files_and_plans() {
+        let parent = temp_dir("files");
+        let bad = [
+            Step::Write { label: "w".into(), path: "../x".into(), contents: String::new() },
+            Step::JsonSet { label: "j".into(), file: "/etc/x.json".into(), sets: vec![], optional: true },
+            Step::Replace { label: "r".into(), file: "a.toml".into(), pattern: "(".into(), replacement: String::new(), optional: false },
+            Step::Git { label: "g".into(), message: "m".into(), branch: "--upload-pack=x".into(), commit: true },
+        ];
+        for step in bad {
+            assert!(validate_plan(&plan(&parent, vec![step])).is_err());
+        }
+        let mut p = plan(&parent, vec![]);
+        p.folder = "..".into();
+        assert!(validate_plan(&p).is_err());
+        let p = Plan { parent: "relative/dir".into(), ..plan(&parent, vec![]) };
+        assert!(validate_plan(&p).is_err());
+        std::fs::remove_dir_all(parent).ok();
+    }
+
+    #[tokio::test]
+    async fn runs_nothing_when_the_plan_is_rejected() {
+        let parent = temp_dir("reject");
+        let write = Step::Write { label: "w".into(), path: "first.txt".into(), contents: "x".into() };
+        let p = plan(&parent, vec![write, run("/bin/sh", Some("project"))]);
+        let (_tx, mut cancel) = watch::channel(false);
+        assert!(execute(&p, &|_, _, _| {}, &mut cancel).await.is_err());
+        assert!(!parent.join("app/first.txt").exists());
+        std::fs::remove_dir_all(parent).ok();
     }
 
     #[test]
