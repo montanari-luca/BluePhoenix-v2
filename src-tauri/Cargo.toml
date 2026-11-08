@@ -48,6 +48,8 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "ico"] }
 notify-debouncer-mini = "0.7.0"
 globset = "0.4.21"
+minisign-verify = "0.3.0"
+sha2 = "0.10"
 
 
 [target.'cfg(windows)'.dependencies]

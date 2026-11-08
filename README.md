@@ -127,7 +127,7 @@ scripts/     Dev and installer scripts
 
 **How it works in brief:** local data lives in SQLite. Git is the `git` CLI. Sync pushes and pulls rows to PostgreSQL with last-write-wins on `updated_at` and deletion tombstones, using a server-side timestamp for pulling (`src-tauri/src/sync.rs`; the iPhone app implements the same rules). AI providers speak the OpenAI-compatible API or Anthropic's.
 
-**Releasing:** run `scripts/bump-version.sh x.y.z` (sets the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `ios/project.yml` and the badge above), build, upload the installers, then update `bluephoenix-v.json` (`{"latest": "x.y.z"}`) and `bluephoenix-d.json` (download links per platform) in the MintFlow-Releases repository. The app reads those two files to offer updates.
+**Releasing:** run `scripts/bump-version.sh x.y.z` (sets the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `ios/project.yml` and the badge above), build, upload the installers, sign each one with `scripts/sign-update.sh <installer> <macos|windows|linux> <https-url>`, then update `bluephoenix-d.json` (per platform: `url`, `sha256`, `signature`, as printed by the script) and finally `bluephoenix-v.json` (`{"latest": "x.y.z"}`) in the MintFlow-Releases repository. The app reads those two files to offer updates, downloads over HTTPS only, and refuses any installer whose checksum or minisign signature doesn't match the key in `src-tauri/keys/update.pub`. One-time key setup and details: [docs/updates.md](docs/updates.md#signing-a-release-maintainers).
 
 ---
 
