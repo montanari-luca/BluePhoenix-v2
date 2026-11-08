@@ -29,12 +29,18 @@ final class AppStore {
     // MARK: Reading
 
     var projects: [Project] {
-        cache.projects.filter { !$0.deleted }.sorted {
+        cache.projects.filter { !$0.deleted && $0.archivedAt == nil }.sorted {
             if $0.favorite != $1.favorite { return $0.favorite }
             return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
     }
+    var archivedProjects: [Project] {
+        cache.projects.filter { !$0.deleted && $0.archivedAt != nil }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
     func project(_ id: String) -> Project? { cache.projects.first { $0.id == id && !$0.deleted } }
+    /// The git summary your computer shares for this project, if any.
+    func git(_ pid: String) -> ProjectGit? { cache.gitRows.first { $0.projectId == pid && !$0.deleted } }
     func todos(_ pid: String) -> [Todo] {
         cache.todos.filter { $0.projectId == pid && !$0.deleted }.sorted { ($0.sort, $0.createdAt) < ($1.sort, $1.createdAt) }
     }
@@ -66,6 +72,11 @@ final class AppStore {
     }
 
     func save(_ p: Project) { upsert(p, \.projects) }
+    func setArchived(_ p: Project, _ archived: Bool) {
+        var p = p
+        p.archivedAt = archived ? nowMs() : nil
+        upsert(p, \.projects)
+    }
     func save(_ t: Todo) {
         var t = t
         if t.status == "done", t.completedAt == nil { t.completedAt = nowMs() }
@@ -163,19 +174,21 @@ final class AppStore {
                     pages: try await db.pull(TodoPage.self, cursor: cur["todo_pages"] ?? 0, client: client),
                     todos: try await db.pull(Todo.self, cursor: cur["todos"] ?? 0, client: client),
                     commands: try await db.pull(CommandItem.self, cursor: cur["commands"] ?? 0, client: client),
-                    time: try await db.pull(TimeEntry.self, cursor: cur["time_entries"] ?? 0, client: client)
+                    time: try await db.pull(TimeEntry.self, cursor: cur["time_entries"] ?? 0, client: client),
+                    git: try await db.pull(ProjectGit.self, cursor: cur["project_git"] ?? 0, client: client)
                 )
             }
 
             markClean(dProjects, \.projects); markClean(dPages, \.pages); markClean(dTodos, \.todos)
             markClean(dCommands, \.commands); markClean(dTime, \.time)
             merge(pulled.projects.rows, \.projects); merge(pulled.pages.rows, \.pages); merge(pulled.todos.rows, \.todos)
-            merge(pulled.commands.rows, \.commands); merge(pulled.time.rows, \.time)
+            merge(pulled.commands.rows, \.commands); merge(pulled.time.rows, \.time); merge(pulled.git.rows, \.gitRows)
             cache.cursors["projects"] = pulled.projects.maxTs
             cache.cursors["todo_pages"] = pulled.pages.maxTs
             cache.cursors["todos"] = pulled.todos.maxTs
             cache.cursors["commands"] = pulled.commands.maxTs
             cache.cursors["time_entries"] = pulled.time.maxTs
+            cache.cursors["project_git"] = pulled.git.maxTs
             cache.lastSync = nowMs()
             persist()
         } catch {
@@ -189,6 +202,7 @@ final class AppStore {
         var todos: (rows: [Todo], maxTs: Int64)
         var commands: (rows: [CommandItem], maxTs: Int64)
         var time: (rows: [TimeEntry], maxTs: Int64)
+        var git: (rows: [ProjectGit], maxTs: Int64)
     }
 
     /// Rows edited again while uploading stay dirty.

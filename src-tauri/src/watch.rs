@@ -14,7 +14,7 @@ use notify_debouncer_mini::notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::db::{list_projects, Db};
+use crate::db::{active_projects, Db};
 use crate::error::{LockExt, Result};
 use crate::scheduler::Job;
 
@@ -110,6 +110,7 @@ fn start(app: &AppHandle) -> Result<Inner> {
         let Ok(events) = res else { return };
         let ids = projects_for(&r.lock_ok(), events.into_iter().map(|e| e.path));
         if !ids.is_empty() {
+            crate::git_share::changed(&handle, &ids);
             let _ = handle.emit("git-changed", ids);
         }
     })
@@ -119,7 +120,7 @@ fn start(app: &AppHandle) -> Result<Inner> {
 
 /// Makes the watches match the projects in the database.
 pub fn sync(app: &AppHandle) -> Result<()> {
-    let wanted: HashMap<String, String> = list_projects(&app.state::<Db>())?
+    let wanted: HashMap<String, String> = active_projects(&app.state::<Db>())?
         .into_iter()
         .filter(|s| !s.project.path.is_empty())
         .map(|s| (s.project.id, s.project.path))

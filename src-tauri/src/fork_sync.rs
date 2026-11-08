@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::db::{list_projects, now, Db};
+use crate::db::{active_projects, list_projects, now, Db};
 use crate::error::{err, Result};
 use crate::git::exec;
 use crate::scheduler::Job;
@@ -102,14 +102,14 @@ fn from_row(r: &Row) -> rusqlite::Result<ForkSync> {
 fn load(db: &Db, project_id: &str) -> Result<ForkSync> {
     let conn = db.0.lock().unwrap();
     let found = conn
-        .query_row("SELECT * FROM fork_sync WHERE project_id=?1", params![project_id], from_row)
+        .query_row("SELECT * FROM fork_sync WHERE project_id=?1 AND deleted=0", params![project_id], from_row)
         .optional()?;
     Ok(found.unwrap_or_else(|| ForkSync::blank(project_id)))
 }
 
 fn load_all(db: &Db) -> Result<Vec<ForkSync>> {
     let conn = db.0.lock().unwrap();
-    let mut stmt = conn.prepare("SELECT * FROM fork_sync WHERE is_fork=1")?;
+    let mut stmt = conn.prepare("SELECT * FROM fork_sync WHERE is_fork=1 AND deleted=0")?;
     let rows = stmt.query_map([], from_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
 }
@@ -132,13 +132,15 @@ fn save(db: &Db, mut cfg: ForkSync) -> Result<ForkSync> {
     cfg.interval_minutes = cfg.interval_minutes.max(MIN_INTERVAL_MINUTES);
     let conn = db.0.lock().unwrap();
     conn.execute(
-        "INSERT INTO fork_sync(project_id,is_fork,upstream_remote,upstream_url,upstream_branch,auto_check,interval_minutes,auto_pull)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+        // The settings sync to other devices (see `sync.rs`); `id` mirrors `project_id` for the sync engine.
+        "INSERT INTO fork_sync(id,project_id,is_fork,upstream_remote,upstream_url,upstream_branch,auto_check,interval_minutes,auto_pull,
+           updated_at,deleted,dirty)
+         VALUES(?1,?1,?2,?3,?4,?5,?6,?7,?8,?9,0,1)
          ON CONFLICT(project_id) DO UPDATE SET is_fork=?2,upstream_remote=?3,upstream_url=?4,upstream_branch=?5,
-           auto_check=?6,interval_minutes=?7,auto_pull=?8",
+           auto_check=?6,interval_minutes=?7,auto_pull=?8,updated_at=?9,deleted=0,dirty=1",
         params![
             cfg.project_id, cfg.is_fork, cfg.upstream_remote, cfg.upstream_url, cfg.upstream_branch, cfg.auto_check,
-            cfg.interval_minutes, cfg.auto_pull
+            cfg.interval_minutes, cfg.auto_pull, now()
         ],
     )?;
     drop(conn);
@@ -365,7 +367,7 @@ async fn run_due(app: &AppHandle) {
     let due: Vec<ForkSync> = load_all(&db).unwrap_or_default().into_iter().filter(|c| c.due(t)).collect();
     let mut results = vec![];
     for before in due {
-        let name = list_projects(&db)
+        let name = active_projects(&db)
             .unwrap_or_default()
             .into_iter()
             .find(|s| s.project.id == before.project_id)

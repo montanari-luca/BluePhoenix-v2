@@ -89,6 +89,29 @@ CREATE TABLE fork_sync(
 );
 "#;
 
+// Phase 3: archived projects, fork settings that sync (results stay local), the sync conflict log
+// and a per-project git summary that syncs so the iPhone app can show it.
+const MIGRATION_4: &str = r#"
+ALTER TABLE projects ADD COLUMN archived_at INTEGER;
+ALTER TABLE fork_sync ADD COLUMN id TEXT;
+UPDATE fork_sync SET id = project_id;
+CREATE UNIQUE INDEX idx_fork_sync_id ON fork_sync(id);
+ALTER TABLE fork_sync ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE fork_sync ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE fork_sync ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+UPDATE fork_sync SET updated_at = CAST(strftime('%s','now') AS INTEGER) * 1000;
+CREATE TABLE sync_conflicts(
+  id TEXT PRIMARY KEY, table_name TEXT NOT NULL, row_id TEXT NOT NULL, label TEXT,
+  local_json TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE TABLE project_git(
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL, branch TEXT, state TEXT NOT NULL DEFAULT '',
+  ahead INTEGER NOT NULL DEFAULT 0, behind INTEGER NOT NULL DEFAULT 0, changed INTEGER NOT NULL DEFAULT 0,
+  last_commit_ts INTEGER, last_commit_subject TEXT, commits TEXT NOT NULL DEFAULT '[]',
+  updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, dirty INTEGER NOT NULL DEFAULT 1
+);
+"#;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -106,6 +129,10 @@ impl Db {
         if version < 3 {
             conn.execute_batch(MIGRATION_3)?;
             conn.pragma_update(None, "user_version", 3)?;
+        }
+        if version < 4 {
+            // DDL is transactional in SQLite: a half-applied migration never sticks.
+            conn.execute_batch(&format!("BEGIN;{MIGRATION_4}PRAGMA user_version = 4;COMMIT;"))?;
         }
         Ok(Db(Mutex::new(conn)))
     }
@@ -130,6 +157,15 @@ pub struct Project {
     pub last_opened: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Hidden from the dashboard and background work when set. Changed only by `project_archive`.
+    #[serde(default)]
+    pub archived_at: Option<i64>,
+}
+
+impl Project {
+    pub fn is_active(&self) -> bool {
+        self.archived_at.is_none()
+    }
 }
 
 fn project_from_row(r: &Row) -> rusqlite::Result<Project> {
@@ -148,6 +184,7 @@ fn project_from_row(r: &Row) -> rusqlite::Result<Project> {
         last_opened: r.get("last_opened")?,
         created_at: r.get("created_at")?,
         updated_at: r.get("updated_at")?,
+        archived_at: r.get("archived_at")?,
     })
 }
 
@@ -291,7 +328,26 @@ pub async fn project_remove(db: State<'_, Db>, id: String) -> Result<()> {
         )?;
     }
     conn.execute("DELETE FROM files WHERE project_id=?1", params![id])?;
-    conn.execute("DELETE FROM fork_sync WHERE project_id=?1", params![id])?;
+    // Fork settings sync now, so remove them with a tombstone instead of deleting the row.
+    conn.execute("UPDATE fork_sync SET is_fork=0, deleted=1, dirty=1, updated_at=?1 WHERE project_id=?2", params![t, id])?;
+    conn.execute("UPDATE project_git SET deleted=1, dirty=1, updated_at=?1 WHERE project_id=?2", params![t, id])?;
+    Ok(())
+}
+
+/// Projects that are not archived: the ones background work (automations, fork checks, watchers) touches.
+pub fn active_projects(db: &Db) -> Result<Vec<ProjectSummary>> {
+    Ok(list_projects(db)?.into_iter().filter(|s| s.project.is_active()).collect())
+}
+
+/// Archives (hides) or restores a project. Syncs like any other edit.
+#[tauri::command]
+pub async fn project_archive(db: State<'_, Db>, id: String, archived: bool) -> Result<()> {
+    let conn = db.0.lock_ok();
+    let t = now();
+    conn.execute(
+        "UPDATE projects SET archived_at=?1, updated_at=?2, dirty=1 WHERE id=?3",
+        params![if archived { Some(t) } else { None }, t, id],
+    )?;
     Ok(())
 }
 
@@ -521,4 +577,41 @@ pub fn set_setting(db: &Db, key: &str, value: &str) -> Result<()> {
 pub fn setting(db: &Db, key: &str) -> Option<String> {
     let conn = db.0.lock_ok();
     conn.query_row("SELECT value FROM settings WHERE key=?1", params![key], |r| r.get(0)).ok()
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    /// A database from the previous version keeps its fork settings and gets them ready to sync.
+    #[test]
+    fn upgrades_a_version_3_database() {
+        let path = std::env::temp_dir().join(format!("bp-mig-{}.db", uuid::Uuid::new_v4()));
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(MIGRATION_1).unwrap();
+            c.execute_batch(MIGRATION_2).unwrap();
+            c.execute_batch(MIGRATION_3).unwrap();
+            c.pragma_update(None, "user_version", 3).unwrap();
+            c.execute("INSERT INTO projects(id,name,path,created_at,updated_at) VALUES('p','P','/p',1,1)", []).unwrap();
+            c.execute("INSERT INTO fork_sync(project_id,is_fork,upstream_url,status) VALUES('p',1,'u','safe')", []).unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        let c = db.0.lock_ok();
+        let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 4);
+        let (id, dirty, updated, status): (String, i64, i64, String) = c
+            .query_row("SELECT id,dirty,updated_at,status FROM fork_sync WHERE project_id='p'", [], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .unwrap();
+        assert_eq!((id.as_str(), dirty, status.as_str()), ("p", 1, "safe"));
+        assert!(updated > 0);
+        let archived: Option<i64> = c.query_row("SELECT archived_at FROM projects WHERE id='p'", [], |r| r.get(0)).unwrap();
+        assert_eq!(archived, None);
+        drop(c);
+        // Opening again is a no-op.
+        drop(db);
+        Db::open(&path).unwrap();
+    }
 }

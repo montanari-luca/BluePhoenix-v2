@@ -39,6 +39,7 @@ struct Project: SyncRow {
     static let table = TableDef(name: "projects", cols: [
         ("id", .text), ("name", .text), ("description", .text), ("kind", .text), ("favorite", .bool),
         ("github_url", .text), ("website_url", .text), ("created_at", .int), ("updated_at", .int),
+        ("archived_at", .int),
     ])
     var id: String
     var name: String
@@ -49,11 +50,13 @@ struct Project: SyncRow {
     var websiteUrl: String?
     var createdAt: Int64
     var updatedAt: Int64
+    /// Set when archived on any device: hidden from the main list.
+    var archivedAt: Int64?
     var deleted = false
     var dirty = false
 
     var values: [PGValue] {
-        [.s(id), .s(name), .s(description), .s(kind), .b(favorite), .s(githubUrl), .s(websiteUrl), .i(createdAt), .i(updatedAt)]
+        [.s(id), .s(name), .s(description), .s(kind), .b(favorite), .s(githubUrl), .s(websiteUrl), .i(createdAt), .i(updatedAt), .i(archivedAt)]
     }
     init(values v: [PGValue], deleted: Bool) {
         id = v[0].string ?? ""
@@ -65,6 +68,7 @@ struct Project: SyncRow {
         websiteUrl = v[6].string
         createdAt = v[7].int ?? 0
         updatedAt = v[8].int ?? 0
+        archivedAt = v.count > 9 ? v[9].int : nil
         self.deleted = deleted
     }
     init(name: String, kind: String = "Other") {
@@ -239,14 +243,73 @@ struct TimeEntry: SyncRow {
     }
 }
 
+/// A git summary the desktop app shares for each project. Read-only here: the phone never writes it.
+struct ProjectGit: SyncRow {
+    static let table = TableDef(name: "project_git", cols: [
+        ("id", .text), ("project_id", .text), ("branch", .text), ("state", .text), ("ahead", .int), ("behind", .int),
+        ("changed", .int), ("last_commit_ts", .int), ("last_commit_subject", .text), ("commits", .text), ("updated_at", .int),
+    ])
+    struct Commit: Codable, Hashable {
+        var short: String
+        var subject: String
+        var author: String
+        var ts: Int64
+    }
+
+    var id: String
+    var projectId: String
+    var branch: String?
+    /// no-repo | conflict | dirty | diverged | ahead | behind | no-upstream | clean
+    var state: String
+    var ahead: Int64
+    var behind: Int64
+    var changed: Int64
+    var lastCommitTs: Int64?
+    var lastCommitSubject: String?
+    var commitsJSON: String
+    var updatedAt: Int64
+    var deleted = false
+    var dirty = false
+
+    var commits: [Commit] {
+        (try? JSONDecoder().decode([Commit].self, from: Data(commitsJSON.utf8))) ?? []
+    }
+
+    var values: [PGValue] {
+        [.s(id), .s(projectId), .s(branch), .s(state), .i(ahead), .i(behind), .i(changed), .i(lastCommitTs), .s(lastCommitSubject),
+         .s(commitsJSON), .i(updatedAt)]
+    }
+    init(values v: [PGValue], deleted: Bool) {
+        id = v[0].string ?? ""
+        projectId = v[1].string ?? ""
+        branch = v[2].string
+        state = v[3].string ?? ""
+        ahead = v[4].int ?? 0
+        behind = v[5].int ?? 0
+        changed = v[6].int ?? 0
+        lastCommitTs = v[7].int
+        lastCommitSubject = v[8].string
+        commitsJSON = v[9].string ?? "[]"
+        updatedAt = v[10].int ?? 0
+        self.deleted = deleted
+    }
+}
+
 struct Cache: Codable {
     var projects: [Project] = []
     var pages: [TodoPage] = []
     var todos: [Todo] = []
     var commands: [CommandItem] = []
     var time: [TimeEntry] = []
+    /// Optional so caches saved by older versions still decode.
+    var git: [ProjectGit]?
     var cursors: [String: Int64] = [:]
     var lastSync: Int64?
+
+    var gitRows: [ProjectGit] {
+        get { git ?? [] }
+        set { git = newValue }
+    }
 }
 
 // MARK: - Formatting

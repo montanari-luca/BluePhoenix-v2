@@ -168,7 +168,7 @@ export const useStore = create<State>((set, get) => ({
   refreshAllStatuses: (opts) => {
     if (fullRefresh) return fullRefresh;
     if (opts?.ifOlderThan && Date.now() - lastFullRefresh < opts.ifOlderThan) return Promise.resolve();
-    const ordered = [...get().projects].sort((a, b) => Number(visibleCards.has(b.id)) - Number(visibleCards.has(a.id)));
+    const ordered = get().projects.filter((p) => !p.archivedAt).sort((a, b) => Number(visibleCards.has(b.id)) - Number(visibleCards.has(a.id)));
     fullRefresh = pool(ordered, STATUS_CONCURRENCY, (p) => get().refreshStatus(p.id)).finally(() => {
       fullRefresh = null;
       lastFullRefresh = Date.now();

@@ -54,8 +54,44 @@ const TABLES: &[Table] = &[
             ("website_url", T::Text),
             ("created_at", T::Int),
             ("updated_at", T::Int),
+            ("archived_at", T::Int),
         ],
         local_defaults: &[("path", "''")],
+    },
+    // Fork upstream settings. The check results in the same local table are per machine and never sync.
+    Table {
+        name: "fork_sync",
+        cols: &[
+            ("id", T::Text),
+            ("project_id", T::Text),
+            ("is_fork", T::Bool),
+            ("upstream_remote", T::Text),
+            ("upstream_url", T::Text),
+            ("upstream_branch", T::Text),
+            ("auto_check", T::Bool),
+            ("interval_minutes", T::Int),
+            ("auto_pull", T::Bool),
+            ("updated_at", T::Int),
+        ],
+        local_defaults: &[],
+    },
+    // A git summary per project, written by the desktop (`git_share.rs`) and shown read-only on the iPhone.
+    Table {
+        name: "project_git",
+        cols: &[
+            ("id", T::Text),
+            ("project_id", T::Text),
+            ("branch", T::Text),
+            ("state", T::Text),
+            ("ahead", T::Int),
+            ("behind", T::Int),
+            ("changed", T::Int),
+            ("last_commit_ts", T::Int),
+            ("last_commit_subject", T::Text),
+            ("commits", T::Text),
+            ("updated_at", T::Int),
+        ],
+        local_defaults: &[],
     },
     Table {
         name: "todo_pages",
@@ -142,6 +178,10 @@ pub fn schema_sql() -> String {
             p = pg_name(t),
             c = cols.join(", ")
         ));
+        // Columns added in later versions: tables created by an older app (or the iPhone) get them too.
+        for c in cols.iter().skip(1) {
+            s.push_str(&format!("ALTER TABLE {p} ADD COLUMN IF NOT EXISTS {c};\n", p = pg_name(t)));
+        }
     }
     s
 }
@@ -322,13 +362,23 @@ async fn push_table(client: &Client, db: &Db, t: &Table) -> Result<usize> {
         return Ok(0);
     }
     let stmt = pg(client.prepare(&upsert_remote_sql(t)).await)?;
+    let mut rejected = vec![];
     for chunk in rows.chunks(40) {
         let futs = chunk.iter().map(|row| {
             let params: Vec<&(dyn ToSql + Sync)> = row.iter().map(|v| v.as_sql()).collect();
             let stmt = stmt.clone();
             async move { client.execute(&stmt, &params).await }
         });
-        pg(try_join_all(futs).await)?;
+        let counts = pg(try_join_all(futs).await)?;
+        // 0 rows written: the server already has a newer version, so this local edit loses (last write
+        // wins) and the pull below replaces it. Keep a copy so the user can see and restore it.
+        rejected.extend(chunk.iter().zip(counts).filter(|(_, n)| *n == 0).map(|(row, _)| row));
+    }
+    if !rejected.is_empty() {
+        let conn = db.0.lock_ok();
+        for row in rejected {
+            let _ = record_conflict(&conn, t, row);
+        }
     }
     // Mark clean only rows that were not edited again while we were uploading.
     let ua = updated_at_idx(t);
@@ -341,6 +391,35 @@ async fn push_table(client: &Client, db: &Db, t: &Table) -> Result<usize> {
     }
     tx.commit()?;
     Ok(rows.len())
+}
+
+/// A row as `{column: value}` JSON, with `deleted` included.
+fn row_json(t: &Table, row: &[V]) -> serde_json::Map<String, serde_json::Value> {
+    use serde_json::Value as J;
+    let mut m = serde_json::Map::new();
+    let names = t.cols.iter().map(|(n, _)| *n).chain(["deleted"]);
+    for (name, v) in names.zip(row) {
+        let j = match v {
+            V::T(s) => s.clone().map(J::String).unwrap_or(J::Null),
+            V::I(i) => i.map(J::from).unwrap_or(J::Null),
+            V::B(b) => J::Bool(*b),
+        };
+        m.insert(name.to_string(), j);
+    }
+    m
+}
+
+fn record_conflict(conn: &Connection, t: &Table, row: &[V]) -> rusqlite::Result<()> {
+    let json = row_json(t, row);
+    let row_id = json.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let label = ["name", "title", "label", "command"]
+        .iter()
+        .find_map(|k| json.get(*k).and_then(|v| v.as_str()).map(str::to_string));
+    conn.execute(
+        "INSERT INTO sync_conflicts(id,table_name,row_id,label,local_json,created_at) VALUES(?1,?2,?3,?4,?5,?6)",
+        rusqlite::params![uuid::Uuid::new_v4().to_string(), t.name, row_id, label, serde_json::Value::Object(json).to_string(), now()],
+    )?;
+    Ok(())
 }
 
 fn cursor_key(t: &Table) -> String {
@@ -454,6 +533,135 @@ pub fn jobs() -> Vec<Job> {
     })]
 }
 
+// ---------- conflicts ----------
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldDiff {
+    pub field: String,
+    /// The value this computer had (and lost).
+    pub mine: serde_json::Value,
+    /// The value now in use, from the newer edit.
+    pub current: serde_json::Value,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncConflict {
+    pub id: String,
+    pub table: String,
+    pub row_id: String,
+    pub label: Option<String>,
+    pub created_at: i64,
+    /// Fields that differ between the lost version and the current one (`updated_at` left out).
+    pub diffs: Vec<FieldDiff>,
+}
+
+fn table_named(name: &str) -> Option<&'static Table> {
+    TABLES.iter().find(|t| t.name == name)
+}
+
+fn current_row(conn: &Connection, t: &Table, id: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let sql = format!("SELECT {},deleted FROM {} WHERE id=?1", col_list(t), t.name);
+    conn.query_row(&sql, [id], |r| {
+        let mut v = Vec::with_capacity(t.cols.len() + 1);
+        for (i, (_, ty)) in t.cols.iter().enumerate() {
+            v.push(match ty {
+                T::Text => V::T(r.get(i)?),
+                T::Int => V::I(r.get(i)?),
+                T::Bool => V::B(r.get::<_, i64>(i)? != 0),
+            });
+        }
+        v.push(V::B(r.get::<_, i64>(t.cols.len())? != 0));
+        Ok(row_json(t, &v))
+    })
+    .ok()
+}
+
+pub fn list_conflicts(db: &Db) -> Result<Vec<SyncConflict>> {
+    let conn = db.0.lock_ok();
+    let mut stmt =
+        conn.prepare("SELECT id,table_name,row_id,label,local_json,created_at FROM sync_conflicts ORDER BY created_at DESC")?;
+    let raw = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, i64>(5)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut out = vec![];
+    for (id, table, row_id, label, json, created_at) in raw {
+        let mine: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
+        let current = table_named(&table).and_then(|t| current_row(&conn, t, &row_id)).unwrap_or_default();
+        let diffs = mine
+            .iter()
+            .filter(|(k, _)| k.as_str() != "updated_at")
+            .filter(|(k, v)| current.get(*k) != Some(*v))
+            .map(|(k, v)| FieldDiff { field: k.clone(), mine: v.clone(), current: current.get(k).cloned().unwrap_or(serde_json::Value::Null) })
+            .collect();
+        out.push(SyncConflict { id, table, row_id, label, created_at, diffs });
+    }
+    Ok(out)
+}
+
+fn json_to_sql(v: &serde_json::Value) -> SqlValue {
+    match v {
+        serde_json::Value::String(s) => SqlValue::Text(s.clone()),
+        serde_json::Value::Number(n) => n.as_i64().map(SqlValue::Integer).unwrap_or(SqlValue::Null),
+        serde_json::Value::Bool(b) => SqlValue::Integer(*b as i64),
+        _ => SqlValue::Null,
+    }
+}
+
+/// Puts the lost version back as a fresh edit, so it wins on the next sync. Removes the conflict.
+pub fn restore_conflict(db: &Db, id: &str) -> Result<()> {
+    let conn = db.0.lock_ok();
+    let (table, row_id, json): (String, String, String) =
+        conn.query_row("SELECT table_name,row_id,local_json FROM sync_conflicts WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    let Some(t) = table_named(&table) else { return err("That kind of item can no longer be restored") };
+    let mine: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&json)?;
+    let mut sets = vec![];
+    let mut vals = vec![];
+    for (c, _) in t.cols.iter().skip(1).filter(|(c, _)| *c != "updated_at") {
+        if let Some(v) = mine.get(*c) {
+            vals.push(json_to_sql(v));
+            sets.push(format!("{c}=?{}", vals.len()));
+        }
+    }
+    vals.push(SqlValue::Integer(mine.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false) as i64));
+    sets.push(format!("deleted=?{}", vals.len()));
+    // Newer than the version it replaces, even if that one came from a device whose clock runs ahead.
+    let current: i64 = conn
+        .query_row(&format!("SELECT updated_at FROM {} WHERE id=?1", t.name), [&row_id], |r| r.get(0))
+        .unwrap_or(0);
+    vals.push(SqlValue::Integer(now().max(current + 1)));
+    sets.push(format!("updated_at=?{}", vals.len()));
+    vals.push(SqlValue::Text(row_id));
+    let sql = format!("UPDATE {} SET {},dirty=1 WHERE id=?{}", t.name, sets.join(","), vals.len());
+    conn.execute(&sql, params_from_iter(vals))?;
+    conn.execute("DELETE FROM sync_conflicts WHERE id=?1", [id])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_conflicts(db: State<'_, Db>) -> Result<Vec<SyncConflict>> {
+    list_conflicts(&db)
+}
+
+#[tauri::command]
+pub async fn sync_conflict_restore(db: State<'_, Db>, id: String) -> Result<()> {
+    restore_conflict(&db, &id)
+}
+
+/// `None` dismisses them all.
+#[tauri::command]
+pub async fn sync_conflict_dismiss(db: State<'_, Db>, id: Option<String>) -> Result<()> {
+    let conn = db.0.lock_ok();
+    match id {
+        Some(id) => conn.execute("DELETE FROM sync_conflicts WHERE id=?1", [id])?,
+        None => conn.execute("DELETE FROM sync_conflicts", [])?,
+    };
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sync_test(url: String) -> Result<String> {
     let client = connect(&url).await?;
@@ -552,6 +760,9 @@ mod pg_integration {
     use super::*;
     use rusqlite::params;
 
+    /// Both tests reset the same server tables, so they must not run at the same time.
+    static PG_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     fn device(tag: &str) -> Db {
         let path = std::env::temp_dir().join(format!("bp-sync-{tag}-{}.db", uuid::Uuid::new_v4()));
         Db::open(&path).unwrap()
@@ -568,6 +779,7 @@ mod pg_integration {
             eprintln!("BP_TEST_PG not set, skipping");
             return;
         };
+        let _serial = PG_LOCK.lock().await;
         // Clean slate on the server.
         let c = connect(&url).await.unwrap();
         for t in TABLES {
@@ -622,7 +834,76 @@ mod pg_integration {
         run_sync(&b, &url).await.unwrap();
         assert_eq!(one::<i64>(&b, "SELECT deleted FROM time_entries WHERE id='m1'"), Some(1));
 
+        // An offline edit on A that is older than B's already-synced edit loses, but is kept as a
+        // conflict that A can restore.
+        {
+            b.0.lock_ok().execute("UPDATE todos SET title='B synced first', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 50000]).unwrap();
+            a.0.lock_ok().execute("UPDATE todos SET title='A offline', notes='mine', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 40000]).unwrap();
+        }
+        run_sync(&b, &url).await.unwrap();
+        run_sync(&a, &url).await.unwrap();
+        assert_eq!(one::<String>(&a, "SELECT title FROM todos WHERE id='t1'").as_deref(), Some("B synced first"));
+        let conflicts = list_conflicts(&a).unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].table, "todos");
+        assert_eq!(conflicts[0].label.as_deref(), Some("A offline"));
+        assert!(conflicts[0].diffs.iter().any(|d| d.field == "title" && d.mine == "A offline" && d.current == "B synced first"));
+        restore_conflict(&a, &conflicts[0].id).unwrap();
+        assert!(list_conflicts(&a).unwrap().is_empty());
+        run_sync(&a, &url).await.unwrap();
+        run_sync(&b, &url).await.unwrap();
+        assert_eq!(one::<String>(&b, "SELECT title FROM todos WHERE id='t1'").as_deref(), Some("A offline"));
+        assert_eq!(one::<String>(&b, "SELECT notes FROM todos WHERE id='t1'").as_deref(), Some("mine"));
+
+        // Archiving, fork settings and the git summary reach the other device; fork results stay local.
+        {
+            let conn = a.0.lock_ok();
+            conn.execute("UPDATE projects SET archived_at=?1, updated_at=?1, dirty=1 WHERE id='p1'", params![t0 + 60000]).unwrap();
+            conn.execute(
+                "INSERT INTO fork_sync(id,project_id,is_fork,upstream_url,auto_check,status,behind,updated_at,dirty)
+                 VALUES('p1','p1',1,'https://github.com/o/r',1,'safe',4,?1,1)",
+                params![t0 + 60000],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO project_git(id,project_id,branch,state,changed,commits,updated_at) VALUES('p1','p1','main','dirty',2,'[]',?1)",
+                params![t0 + 60000],
+            )
+            .unwrap();
+        }
+        run_sync(&a, &url).await.unwrap();
+        run_sync(&b, &url).await.unwrap();
+        assert_eq!(one::<i64>(&b, "SELECT archived_at FROM projects WHERE id='p1'"), Some(t0 + 60000));
+        assert_eq!(one::<String>(&b, "SELECT upstream_url FROM fork_sync WHERE project_id='p1'").as_deref(), Some("https://github.com/o/r"));
+        assert_eq!(one::<i64>(&b, "SELECT behind FROM fork_sync WHERE project_id='p1'"), Some(0), "check results are per machine");
+        assert_eq!(one::<String>(&b, "SELECT branch FROM project_git WHERE id='p1'").as_deref(), Some("main"));
+
         // Nothing left to do: a further sync pushes nothing.
         assert_eq!(run_sync(&a, &url).await.unwrap().pushed, 0);
+    }
+
+    /// A server created by an older app version gets the new columns added in place.
+    #[tokio::test]
+    async fn upgrades_an_old_server_schema() {
+        let Ok(url) = std::env::var("BP_TEST_PG") else { return };
+        let _serial = PG_LOCK.lock().await;
+        let c = connect(&url).await.unwrap();
+        for t in TABLES {
+            c.batch_execute(&format!("DROP TABLE IF EXISTS {}", pg_name(t))).await.unwrap();
+        }
+        c.batch_execute(
+            "CREATE TABLE bp_projects (id text PRIMARY KEY, name text, description text, kind text, favorite boolean,
+               github_url text, website_url text, created_at bigint, updated_at bigint,
+               deleted boolean NOT NULL DEFAULT false, server_ts bigint NOT NULL DEFAULT 0)",
+        )
+        .await
+        .unwrap();
+        let a = device("old");
+        a.0.lock_ok()
+            .execute("INSERT INTO projects(id,name,path,kind,created_at,updated_at,archived_at) VALUES('p','P','/p','Rust',1,1,5)", [])
+            .unwrap();
+        run_sync(&a, &url).await.unwrap();
+        let row = c.query_one("SELECT archived_at FROM bp_projects WHERE id='p'", &[]).await.unwrap();
+        assert_eq!(row.get::<_, Option<i64>>(0), Some(5));
     }
 }

@@ -44,6 +44,12 @@ A project manager for developers: a Tauri v2 desktop app (macOS, Windows, Linux)
 - Periodic work runs on the single loop in `scheduler.rs`. Each subsystem exposes `jobs() -> Vec<Job>` (`Job::every` / `Job::once`), registered in `lib.rs` `setup`. Never spawn your own `loop { sleep }`.
 - `watch.rs` watches each project's `.git` dir and `refs/` and emits `git-changed` with project ids. The store refreshes those cards, and `useGitChanged` (`src/lib/gitEvents.ts`) lets a view react. `git status` runs with `--no-optional-locks` so a refresh never rewrites the index and re-triggers the watcher.
 - `refreshAllStatuses` runs at most 4 `git status` at a time, on-screen cards first (`setCardVisible`).
+- Synced tables need `id` (PK or unique), `updated_at`, `deleted`, `dirty`; add the table to `TABLES` in `sync.rs` (and to the iOS `PgSchema.allTables` if the phone uses it). Columns added later reach existing servers through the generated `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. Local-only columns in a synced table (e.g. fork check results) just stay out of `cols`.
+- Edits that lose on push (server already newer) are copied to `sync_conflicts`; Settings lets the user restore them.
+- Archived projects (`archived_at`) are skipped by background work: use `db::active_projects`, not `list_projects`, for anything that runs on its own.
+- `backup.rs`: JSON/SQLite export, merge-import (never overwrites newer rows, marks imports dirty), daily `VACUUM INTO` snapshots in `<app data>/backups` (keeps 7). New tables worth keeping go in its `TABLES` list.
+- `git_share.rs` writes a `project_git` row per project (only when it changed and sync is connected) for the iPhone's read-only Git tab.
+- Postgres integration tests: `BP_TEST_PG=postgresql://user@localhost:5544/postgres?sslmode=disable cargo test pg_integration -- --test-threads=1`.
 - Git always goes through the system `git` CLI, so the user's credentials and SSH keys work. Fork conflict prediction needs git 2.38 or newer, for `merge-tree --write-tree`.
 - Secrets (AI keys, the database URL) live in the OS keychain through `keyring`, never in SQLite.
 - UI text is plain and friendly. Colours come from CSS variables (`var(--fg-muted)`, `var(--accent)`, `var(--line)` and so on) so both themes work.

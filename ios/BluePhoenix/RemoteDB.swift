@@ -49,11 +49,21 @@ enum PgSchema {
             }.joined(separator: ", ")
             out.append("CREATE TABLE IF NOT EXISTS \(t.pgName) (\(cols), deleted boolean NOT NULL DEFAULT false, server_ts bigint NOT NULL DEFAULT 0)")
             out.append("CREATE INDEX IF NOT EXISTS \(t.pgName)_ts ON \(t.pgName)(server_ts)")
+            // Columns added in later versions (for example projects.archived_at) on an existing table.
+            for (n, ty) in t.cols.dropFirst() {
+                let sqlType: String
+                switch ty {
+                case .text: sqlType = "text"
+                case .int: sqlType = "bigint"
+                case .bool: sqlType = "boolean"
+                }
+                out.append("ALTER TABLE \(t.pgName) ADD COLUMN IF NOT EXISTS \(n) \(sqlType)")
+            }
         }
         return out
     }
 
-    static let allTables = [Project.table, TodoPage.table, Todo.table, CommandItem.table, TimeEntry.table]
+    static let allTables = [Project.table, TodoPage.table, Todo.table, CommandItem.table, TimeEntry.table, ProjectGit.table]
 }
 
 /// One short-lived connection per sync, talking straight to the user's Postgres.

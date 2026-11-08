@@ -30,6 +30,10 @@ The dashboard lists all your projects as cards. Starred projects and recently op
 
 Click anywhere else on the card to open the full project page.
 
+## Archived projects
+
+The filter next to the search box shows **Archived** once you have archived something. Archived cards look the same; restore one with **⋯ → Restore from archive**. See [Projects](projects.md#archive-a-project).
+
 ## Keeping it fresh
 
 Branch states update by themselves within a second of a commit, checkout, stage, fetch or push, even one you make in another terminal or editor. Edits to your files show up when you bring the window back to the front, and everything is rechecked every five minutes as a safety net.

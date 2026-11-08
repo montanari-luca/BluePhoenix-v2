@@ -1,6 +1,7 @@
 mod ai;
 mod automation_runtime;
 mod automations;
+mod backup;
 pub mod cli;
 mod cli_install;
 mod db;
@@ -9,6 +10,7 @@ mod error;
 mod files;
 mod fork_sync;
 mod git;
+mod git_share;
 mod icons;
 mod initializer;
 mod launch;
@@ -122,7 +124,7 @@ pub fn run() {
             app.manage(db);
             build_main_window(app)?;
             // Every periodic job runs on one scheduler loop.
-            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs()].into_iter().flatten().collect());
+            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs(), git_share::jobs(), backup::jobs()].into_iter().flatten().collect());
             {
                 // Installs / repairs the `bluephoenix` terminal command in the background.
                 let handle = app.handle().clone();
@@ -148,6 +150,7 @@ pub fn run() {
             db::projects_list,
             db::project_save,
             db::project_touch,
+            db::project_archive,
             db::project_remove,
             db::commands_list,
             db::command_save,
@@ -217,6 +220,14 @@ pub fn run() {
             ai::llama_stop,
             // sync
             sync::sync_test,
+            backup::backup_export,
+            backup::backup_import,
+            backup::backup_list,
+            backup::backup_now,
+            backup::backup_dir,
+            sync::sync_conflicts,
+            sync::sync_conflict_restore,
+            sync::sync_conflict_dismiss,
             sync::sync_connect,
             sync::sync_now,
             sync::sync_disconnect,

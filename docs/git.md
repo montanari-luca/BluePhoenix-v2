@@ -45,6 +45,8 @@ Create a stash or apply the latest one, and see the full stash list.
 
 ## GitHub forks
 
+Fork settings (the upstream address, branch and auto-check options) sync to your other computers; each computer keeps its own check results.
+
 In **Edit project** (or when adding one), turn on **This project is a GitHub fork**. The Git tab then shows an **Upstream** card for the original repository.
 
 - **Check now** fetches upstream and reports one of: *up to date*, *safe to pull* (the new commits merge cleanly), *conflicting* (they clash with your commits) or *not tested* (needs git 2.38 or newer). The check never touches your files.

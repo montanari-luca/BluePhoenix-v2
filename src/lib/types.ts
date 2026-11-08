@@ -13,6 +13,8 @@ export interface Project {
   lastOpened: number | null;
   createdAt: number;
   updatedAt: number;
+  /** Set when archived: hidden from the dashboard and background work. */
+  archivedAt?: number | null;
 }
 
 export interface ProjectSummary extends Project {
@@ -295,4 +297,33 @@ export interface Preflight {
   exists: boolean;
   empty: boolean;
   parentExists: boolean;
+}
+
+export interface FieldDiff {
+  field: string;
+  /** What this computer had, and lost to a newer edit. */
+  mine: unknown;
+  /** What is in use now. */
+  current: unknown;
+}
+
+export interface SyncConflict {
+  id: string;
+  table: string;
+  rowId: string;
+  label: string | null;
+  createdAt: number;
+  diffs: FieldDiff[];
+}
+
+export interface BackupFile {
+  path: string;
+  name: string;
+  size: number;
+  createdAt: number;
+}
+
+export interface ImportReport {
+  changed: number;
+  unchanged: number;
 }

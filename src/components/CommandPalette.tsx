@@ -125,7 +125,7 @@ export function CommandPalette() {
     });
     g.push({
       heading: "Projects",
-      items: projects.filter((p) => p.id !== current?.id).map((p) => ({ id: `proj-${p.id}`, label: p.name, hint: p.kind, icon: <Code2 size={15} />, keywords: [p.kind, p.description ?? ""], run: () => nav(`/project/${p.id}`) })),
+      items: projects.filter((p) => p.id !== current?.id && !p.archivedAt).map((p) => ({ id: `proj-${p.id}`, label: p.name, hint: p.kind, icon: <Code2 size={15} />, keywords: [p.kind, p.description ?? ""], run: () => nav(`/project/${p.id}`) })),
     });
     g.push({
       heading: "General",
@@ -133,7 +133,7 @@ export function CommandPalette() {
         { id: "add", label: "Add project…", icon: <FolderPlus size={15} />, run: () => { nav("/"); setAdd(true); } },
         { id: "new", label: "New project…", icon: <Sparkles size={15} />, run: () => { nav("/"); setNew(true); } },
         { id: "refresh", label: "Refresh all git statuses", icon: <RefreshCw size={15} />, run: () => void refreshAll() },
-        { id: "fetch-all", label: "Fetch all projects", icon: <RefreshCw size={15} />, run: async () => { await Promise.all(projects.filter(hasFolder).map((p) => gitAction(p, "fetch"))); } },
+        { id: "fetch-all", label: "Fetch all projects", icon: <RefreshCw size={15} />, run: async () => { await Promise.all(projects.filter((p) => hasFolder(p) && !p.archivedAt).map((p) => gitAction(p, "fetch"))); } },
         { id: "theme-light", label: "Theme: Light", icon: <Sun size={15} />, run: () => void setSetting("theme", "light") },
         { id: "theme-dark", label: "Theme: Dark", icon: <Moon size={15} />, run: () => void setSetting("theme", "dark") },
         { id: "theme-system", label: "Theme: Follow system", icon: <Palette size={15} />, run: () => void setSetting("theme", "system") },

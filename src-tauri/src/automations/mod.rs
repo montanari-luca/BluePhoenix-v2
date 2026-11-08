@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::process::Command;
 
-use crate::db::{list_projects, now, Db, Project};
+use crate::db::{active_projects, now, Db, Project};
 use crate::error::{err, LockExt, Result};
 
 const HOUR_MS: i64 = 3_600_000;

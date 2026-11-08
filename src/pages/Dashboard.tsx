@@ -1,4 +1,4 @@
-import { FolderPlus, Search, Sparkles, Star } from "lucide-react";
+import { FolderArchive, FolderPlus, Search, Sparkles, Star } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { removeProject } from "../lib/actions";
 import { ProjectCard } from "../components/ProjectCard";
@@ -18,7 +18,7 @@ export default function Dashboard() {
   const newOpen = useStore((s) => s.newProjectOpen);
   const setNew = useStore((s) => s.setNewProject);
   const [editing, setEditing] = useState<Project | null>(null);
-  const [filter, setFilter] = useState<"all" | "favorites">("all");
+  const [filter, setFilter] = useState<"all" | "favorites" | "archived">("all");
   const [query, setQuery] = useState("");
   const { confirm, node } = useConfirm();
 
@@ -38,10 +38,13 @@ export default function Dashboard() {
     const q = query.trim().toLowerCase();
     return projects.filter(
       (p) =>
-        (filter === "all" || p.favorite) &&
+        (filter === "archived" ? !!p.archivedAt : !p.archivedAt && (filter === "all" || p.favorite)) &&
         (!q || p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || p.kind.toLowerCase().includes(q)),
     );
   }, [projects, filter, query]);
+
+  const active = useMemo(() => projects.filter((p) => !p.archivedAt), [projects]);
+  const archivedCount = projects.length - active.length;
 
   const askRemove = async (p: Project) => {
     if (await confirm(`Remove “${p.name}” from BluePhoenix? Your files on disk are not touched.`)) await removeProject(p);
@@ -55,7 +58,9 @@ export default function Dashboard() {
         <div className="mr-auto">
           <h1 className="text-[22px] font-bold tracking-tight">Projects</h1>
           <p className="text-[13px] text-[var(--fg-muted)]">
-            {projects.length === 0 ? "Nothing here yet" : `${projects.length} project${projects.length === 1 ? "" : "s"}`}
+            {active.length === 0 && archivedCount === 0
+              ? "Nothing here yet"
+              : `${active.length} project${active.length === 1 ? "" : "s"}${archivedCount ? ` · ${archivedCount} archived` : ""}`}
           </p>
         </div>
         <div className="relative">
@@ -68,6 +73,7 @@ export default function Dashboard() {
           options={[
             { value: "all", label: "All" },
             { value: "favorites", label: "★ Favorites" },
+            ...(archivedCount || filter === "archived" ? [{ value: "archived" as const, label: "Archived" }] : []),
           ]}
         />
         <button className="btn" onClick={() => setAdd(true)}>
@@ -94,8 +100,15 @@ export default function Dashboard() {
             </Empty>
           </div>
         ) : shown.length === 0 ? (
-          <Empty icon={filter === "favorites" ? <Star size={32} /> : <Search size={32} />} title="No matching projects">
-            {filter === "favorites" ? "Star a project to pin it here." : "Try a different search."}
+          <Empty
+            icon={filter === "favorites" ? <Star size={32} /> : filter === "archived" ? <FolderArchive size={32} /> : <Search size={32} />}
+            title={filter === "archived" && !query ? "Nothing archived" : "No matching projects"}
+          >
+            {filter === "favorites"
+              ? "Star a project to pin it here."
+              : filter === "archived" && !query
+                ? "Archive a finished project from its ⋯ menu to tidy up the dashboard. Its history stays."
+                : "Try a different search."}
           </Empty>
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))" }}>

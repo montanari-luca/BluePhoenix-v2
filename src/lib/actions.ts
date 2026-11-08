@@ -119,6 +119,16 @@ export async function toggleFavorite(p: Project) {
   await useStore.getState().loadProjects();
 }
 
+export async function setArchived(p: Project, archived: boolean) {
+  await api.archiveProject(p.id, archived);
+  await useStore.getState().loadProjects();
+  toast(
+    archived
+      ? { kind: "success", title: `Archived ${p.name}`, detail: "Find it under Archived on the dashboard." }
+      : { kind: "success", title: `Restored ${p.name}` },
+  );
+}
+
 export async function removeProject(p: Project) {
   await api.removeProject(p.id);
   await useStore.getState().loadProjects();

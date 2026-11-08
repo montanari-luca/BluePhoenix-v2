@@ -2,6 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Step } from "./initializer";
 import type {
   AppInfo,
+  BackupFile,
+  ImportReport,
+  SyncConflict,
   Automation,
   AutomationRun,
   AutomationSummary,
@@ -42,6 +45,20 @@ export const api = {
   saveProject: (project: Project) => invoke<Project>("project_save", { project }),
   touchProject: (id: string) => invoke<void>("project_touch", { id }),
   removeProject: (id: string) => invoke<void>("project_remove", { id }),
+  archiveProject: (id: string, archived: boolean) => invoke<void>("project_archive", { id, archived }),
+
+  // backups
+  backupExport: (path: string) => invoke<void>("backup_export", { path }),
+  backupImport: (path: string) => invoke<ImportReport>("backup_import", { path }),
+  backupList: () => invoke<BackupFile[]>("backup_list"),
+  backupNow: () => invoke<BackupFile>("backup_now"),
+  backupDir: () => invoke<string>("backup_dir"),
+
+  // sync conflicts
+  syncConflicts: () => invoke<SyncConflict[]>("sync_conflicts"),
+  syncConflictRestore: (id: string) => invoke<void>("sync_conflict_restore", { id }),
+  /** Without an id, dismisses all of them. */
+  syncConflictDismiss: (id?: string) => invoke<void>("sync_conflict_dismiss", { id: id ?? null }),
   commands: (projectId: string) => invoke<Command[]>("commands_list", { projectId }),
   saveCommand: (command: Command) => invoke<void>("command_save", { command }),
   deleteCommand: (id: string) => invoke<void>("command_delete", { id }),

@@ -1,7 +1,7 @@
 import SwiftUI
 
 private enum Section: String, CaseIterable, Identifiable {
-    case todos = "To-dos", notes = "Notes", time = "Time", commands = "Commands"
+    case todos = "To-dos", notes = "Notes", time = "Time", commands = "Commands", git = "Git"
     var id: String { rawValue }
 }
 
@@ -19,7 +19,8 @@ struct ProjectDetailView: View {
                 VStack(spacing: 0) {
                     header(p)
                     Picker("Section", selection: $section) {
-                        ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
+                        // Git only appears once a computer has shared a summary for this project.
+                        ForEach(Section.allCases.filter { $0 != .git || store.git(p.id) != nil }) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .padding([.horizontal, .bottom])
@@ -28,6 +29,7 @@ struct ProjectDetailView: View {
                     case .notes: NotesSection(project: p)
                     case .time: TimeSection(project: p)
                     case .commands: CommandsSection(project: p)
+                    case .git: GitSection(project: p)
                     }
                 }
                 .background(BrandBackground())
@@ -42,6 +44,11 @@ struct ProjectDetailView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button { editing = true } label: { Label("Edit project", systemImage: "pencil") }
+                            if p.archivedAt == nil {
+                                Button { store.setArchived(p, true); dismiss() } label: { Label("Archive project", systemImage: "archivebox") }
+                            } else {
+                                Button { store.setArchived(p, false) } label: { Label("Restore from archive", systemImage: "arrow.uturn.backward") }
+                            }
                             Button(role: .destructive) { confirmDelete = true } label: { Label("Delete project", systemImage: "trash") }
                         } label: { Image(systemName: "ellipsis.circle") }
                     }
@@ -388,5 +395,90 @@ private struct CommandsSection: View {
         }
         .brandList()
         .overlay { if cmds.isEmpty { ContentUnavailableView("No commands", systemImage: "terminal", description: Text("Commands are managed in BluePhoenix on your computer and can be copied here.")) } }
+    }
+}
+
+// MARK: - Git (read-only, shared by the desktop app)
+
+/// How a git state reads on the phone, matching the desktop dashboard.
+struct GitState {
+    let label: String
+    let color: Color
+
+    init?(_ raw: String) {
+        switch raw {
+        case "clean": label = "Up to date"; color = .green
+        case "dirty": label = "Uncommitted changes"; color = .orange
+        case "ahead": label = "To push"; color = .blue
+        case "behind": label = "To pull"; color = .purple
+        case "diverged": label = "Diverged"; color = .pink
+        case "conflict": label = "Conflicts"; color = .red
+        case "no-upstream": label = "Not published"; color = .secondary
+        default: return nil
+        }
+    }
+
+    /// A few words for the project list.
+    func short(_ g: ProjectGit) -> String {
+        switch label {
+        case "Uncommitted changes": return "\(g.changed) changed"
+        case "To push": return "\(g.ahead) to push"
+        case "To pull": return "\(g.behind) to pull"
+        case "Diverged": return "↑\(g.ahead) ↓\(g.behind)"
+        default: return label
+        }
+    }
+}
+
+private struct GitSection: View {
+    @Environment(AppStore.self) private var store
+    let project: Project
+
+    private func ago(_ ms: Int64) -> String {
+        RelativeDateTimeFormatter().localizedString(for: Date(timeIntervalSince1970: Double(ms) / 1000), relativeTo: Date())
+    }
+
+    var body: some View {
+        if let g = store.git(project.id) {
+            List {
+                SwiftUI.Section {
+                    HStack {
+                        Label(g.branch ?? "Detached", systemImage: "arrow.triangle.branch").font(.headline)
+                        Spacer()
+                        if let s = GitState(g.state) { Pill(text: s.label, color: s.color) }
+                    }
+                    .glassRow()
+                    if g.ahead > 0 || g.behind > 0 {
+                        HStack(spacing: 18) {
+                            Label("\(g.ahead) to push", systemImage: "arrow.up")
+                            Label("\(g.behind) to pull", systemImage: "arrow.down")
+                        }
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .glassRow()
+                    }
+                    if g.changed > 0 {
+                        Label("\(g.changed) uncommitted file\(g.changed == 1 ? "" : "s")", systemImage: "pencil.and.list.clipboard")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .glassRow()
+                    }
+                } footer: {
+                    Text("Shared by BluePhoenix on your computer, updated \(ago(g.updatedAt)).")
+                }
+                SwiftUI.Section("Recent commits") {
+                    ForEach(g.commits, id: \.self) { c in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(c.subject).font(.subheadline).lineLimit(2)
+                            Text("\(c.short) · \(c.author) · \(ago(c.ts))")
+                                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                        }
+                        .glassRow()
+                    }
+                }
+            }
+            .brandList()
+        } else {
+            ContentUnavailableView("No git info yet", systemImage: "arrow.triangle.branch",
+                                   description: Text("Open BluePhoenix on the computer that has this project's folder, with cloud sync on."))
+        }
     }
 }

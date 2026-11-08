@@ -9,6 +9,8 @@ import { Section, Row } from "./settings/Shared";
 import { AiSection } from "./settings/AiSection";
 import { CliSection } from "./settings/CliSection";
 import { UpdatesSection } from "./settings/UpdatesSection";
+import { BackupSection } from "./settings/BackupSection";
+import { ConflictsSection } from "./settings/ConflictsSection";
 
 export default function Settings() {
   const { settings, setSetting, editors, terminals, system } = useStore();
@@ -73,6 +75,8 @@ export default function Settings() {
 
         <AiSection />
         <SyncSection />
+        <ConflictsSection />
+        <BackupSection />
         <CliSection />
         <UpdatesSection />
 

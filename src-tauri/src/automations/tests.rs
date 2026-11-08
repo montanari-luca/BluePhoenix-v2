@@ -53,6 +53,7 @@ pub(super) fn project(db: &Db, name: &str, kind: &str, dir: &Path) -> Project {
             last_opened: None,
             created_at: t,
             updated_at: t,
+            archived_at: None,
         },
     )
     .unwrap()

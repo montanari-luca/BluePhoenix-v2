@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   Code2,
   ExternalLink,
+  FolderArchive,
   FolderOpen,
   Globe,
   Pencil,
@@ -12,6 +13,7 @@ import {
   SquareTerminal,
   Terminal,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import {
   defaultEditorId,
@@ -21,6 +23,7 @@ import {
   openEditor,
   openExternal,
   openTerminal,
+  setArchived,
 } from "../lib/actions";
 import { api } from "../lib/api";
 import { useStore } from "../lib/store";
@@ -46,6 +49,11 @@ export function buildProjectMenu(p: Project, opts: { onRemove: () => void; onEdi
     { separator: true },
   ];
   if (opts.onEdit) items.push({ label: "Edit project…", icon: <Pencil size={15} />, onClick: opts.onEdit });
+  items.push(
+    p.archivedAt
+      ? { label: "Restore from archive", icon: <Undo2 size={15} />, onClick: () => void setArchived(p, false) }
+      : { label: "Archive project", icon: <FolderArchive size={15} />, onClick: () => void setArchived(p, true) },
+  );
   items.push({ label: "Remove project", icon: <Trash2 size={15} />, onClick: opts.onRemove, danger: true });
   return items;
 }

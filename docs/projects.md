@@ -29,6 +29,10 @@ Open the project and choose **Edit project…** from the **⋯** menu. You can c
 
 Star a project from its card or its page. The command palette also has *Add to favorites*.
 
+## Archive a project
+
+Finished with something but want to keep its history? Use **⋯ → Archive project**. It disappears from the dashboard, the command palette and all background work (status refreshes, automations, fork checks), but keeps its to-dos, notes and time. Archived projects are listed under **Archived** on the dashboard; restore one from its ⋯ menu. Archiving syncs, so it applies on your other devices and the iPhone too.
+
 ## Remove a project
 
 **⋯ → Remove project**. This only removes it from BluePhoenix, along with its to-dos, notes and time entries. **Your files on disk are never touched.**

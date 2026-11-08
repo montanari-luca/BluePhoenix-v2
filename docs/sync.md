@@ -29,11 +29,17 @@ Install BluePhoenix on your iPhone, open **Settings**, paste the same connection
 - Pull down on the project list to sync. It also syncs when you open the app and a moment after each change.
 - You can add projects, tick off and edit to-dos, edit notes, and log time on the go. Everything works offline and syncs when you are back online.
 - Commands are shown for reference (long-press to copy). They run on your computer.
+- The **Git** tab shows the branch, whether there is something to push, pull or commit, and the last 10 commits, as shared by the computer that has the project's folder. It is read-only and appears once that computer has synced.
+- Swipe a project left to **Archive** it; archived projects are under **Archived** at the bottom of the list.
 - To use another database, **Disconnect** and connect again.
 
 ## How conflicts are handled
 
 If you change the same item on two devices before they sync, the **most recent change wins**. Deleting an item on one device removes it everywhere.
+
+When an edit you made on this computer loses to a newer one from another device, BluePhoenix keeps your version. **Settings → Sync conflicts** (shown only when there are some) lists each one with what changed, and you can **Restore mine** (it becomes the newest edit and syncs everywhere) or **Keep the newer one**.
+
+**What syncs:** projects (including archived state), to-dos, pages, notes, commands, time, fork upstream settings, and a short git summary for the iPhone. **What stays on each computer:** folder paths, automations, fork check results, the file index and your keys.
 
 ## Troubleshooting
 

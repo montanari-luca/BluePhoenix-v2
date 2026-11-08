@@ -3,7 +3,7 @@
 use super::*;
 
 pub fn resolve_targets(db: &Db, a: &Automation) -> Result<Vec<Project>> {
-    Ok(list_projects(db)?
+    Ok(active_projects(db)?
         .into_iter()
         .map(|s| s.project)
         .filter(|p| !p.path.is_empty() && Path::new(&p.path).is_dir())

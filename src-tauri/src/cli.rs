@@ -348,6 +348,7 @@ async fn add(path_arg: Option<&str>) -> Result<()> {
             last_opened: None,
             created_at: now,
             updated_at: now,
+            archived_at: None,
         },
     )?;
     let commands: Vec<ProjectFileCommand> = match &restored {
