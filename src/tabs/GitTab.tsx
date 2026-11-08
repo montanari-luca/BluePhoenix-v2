@@ -1,14 +1,16 @@
 import { Archive, ArchiveRestore, GitBranch, GitMerge, Plus, Sparkles, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateCommitMessage } from "../lib/ai";
 import { gitAction } from "../lib/actions";
 import { api, errMsg } from "../lib/api";
 import { formatDateTime, timeAgo } from "../lib/format";
 import { useStore, logError } from "../lib/store";
 import type { Branch, Change, Commit, Project } from "../lib/types";
+import { CommitGraphCell, GRAPH_PALETTE, GRAPH_ROW_H, RefLabels, graphWidth } from "../components/CommitGraph";
 import { ForkStatusCard } from "../components/ForkSync";
 import { PullRequestsCard } from "../components/PullRequests";
 import { WorktreesView } from "../components/Worktrees";
+import { layoutGraph } from "../lib/graph";
 import { Dropdown, Empty, Modal, Segmented, Spinner, useConfirm } from "../components/ui";
 import { useGitChanged } from "../lib/gitEvents";
 
@@ -53,6 +55,8 @@ export default function GitTab({ project: p }: { project: Project }) {
   const [diff, setDiff] = useState<{ title: string; text: string } | null>(null);
   const [newBranch, setNewBranch] = useState("");
   const { confirm, node } = useConfirm();
+  const graph = useMemo(() => layoutGraph(log, GRAPH_PALETTE.length), [log]);
+  const remotes = useMemo(() => new Set(branches.filter((b) => b.remote).map((b) => b.name)), [branches]);
 
   const loadLists = useCallback(async () => {
     try {
@@ -302,13 +306,16 @@ export default function GitTab({ project: p }: { project: Project }) {
             <Empty icon={<GitBranch size={28} />} title="No commits yet" />
           ) : (
             <ul className="max-h-[60vh] overflow-y-auto p-1.5">
-              {log.map((c) => (
+              {log.map((c, i) => (
                 <li key={c.hash}>
                   <button
-                    className="row-hover flex w-full cursor-pointer items-baseline gap-3 rounded-lg px-3 py-2 text-left"
+                    className="row-hover flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 text-left"
+                    style={{ height: GRAPH_ROW_H }}
                     onClick={async () => setDiff({ title: `${c.short} — ${c.subject}`, text: await api.gitShow(p.path, c.hash).catch((e) => errMsg(e)) })}
                   >
+                    <CommitGraphCell row={graph.rows[i]} width={graphWidth(graph.width)} merge={c.parents.length > 1} />
                     <code className="font-mono text-xs text-[var(--accent)]">{c.short}</code>
+                    <RefLabels refs={c.refs} remotes={remotes} />
                     <span className="min-w-0 flex-1 truncate text-[13px]">{c.subject}</span>
                     <span className="shrink-0 text-xs text-[var(--fg-faint)]">{c.author} · {formatDateTime(c.ts)}</span>
                   </button>
