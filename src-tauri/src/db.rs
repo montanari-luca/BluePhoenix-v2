@@ -122,6 +122,17 @@ CREATE INDEX idx_activity_ts ON activity(ts);
 CREATE TABLE activity_scan(project_id TEXT PRIMARY KEY, last_scan INTEGER NOT NULL);
 "#;
 
+// Phase 5: filters for the event triggers (file globs, branch globs), and the user's own
+// New project templates (synced).
+const MIGRATION_6: &str = r#"
+ALTER TABLE automations ADD COLUMN trigger_filter TEXT;
+CREATE TABLE project_templates(
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, blurb TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'Other',
+  icon TEXT NOT NULL DEFAULT 'Bookmark', base_id TEXT, body TEXT NOT NULL,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted INTEGER NOT NULL DEFAULT 0, dirty INTEGER NOT NULL DEFAULT 1
+);
+"#;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -146,6 +157,9 @@ impl Db {
         }
         if version < 5 {
             conn.execute_batch(&format!("BEGIN;{MIGRATION_5}PRAGMA user_version = 5;COMMIT;"))?;
+        }
+        if version < 6 {
+            conn.execute_batch(&format!("BEGIN;{MIGRATION_6}PRAGMA user_version = 6;COMMIT;"))?;
         }
         Ok(Db(Mutex::new(conn)))
     }
@@ -614,7 +628,7 @@ mod migration_tests {
         let db = Db::open(&path).unwrap();
         let c = db.0.lock_ok();
         let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 5);
+        assert_eq!(v, 6);
         let (id, dirty, updated, status): (String, i64, i64, String) = c
             .query_row("SELECT id,dirty,updated_at,status FROM fork_sync WHERE project_id='p'", [], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))

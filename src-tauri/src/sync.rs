@@ -75,6 +75,22 @@ const TABLES: &[Table] = &[
         ],
         local_defaults: &[],
     },
+    // The user's own New project templates (`templates.rs`).
+    Table {
+        name: "project_templates",
+        cols: &[
+            ("id", T::Text),
+            ("name", T::Text),
+            ("blurb", T::Text),
+            ("kind", T::Text),
+            ("icon", T::Text),
+            ("base_id", T::Text),
+            ("body", T::Text),
+            ("created_at", T::Int),
+            ("updated_at", T::Int),
+        ],
+        local_defaults: &[],
+    },
     // A git summary per project, written by the desktop (`git_share.rs`) and shown read-only on the iPhone.
     Table {
         name: "project_git",

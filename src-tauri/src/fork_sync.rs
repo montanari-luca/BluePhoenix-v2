@@ -10,7 +10,6 @@ use std::time::Duration;
 use rusqlite::{params, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri_plugin_notification::NotificationExt;
 
 use crate::db::{active_projects, list_projects, now, Db};
 use crate::error::{err, Result};
@@ -355,7 +354,7 @@ pub async fn fork_check(app: AppHandle, db: State<'_, Db>, project_id: String, p
 }
 
 fn notify(app: &AppHandle, title: &str, body: &str) {
-    let _ = app.notification().builder().title(title).body(body).show();
+    crate::notify::send(app, crate::notify::FORK, title, body);
 }
 
 /// Checks every fork that is due.
@@ -384,6 +383,9 @@ async fn run_due(app: &AppHandle) {
             };
             let id = format!("fork:{}:{}", after.project_id, after.last_check.unwrap_or(t));
             let _ = crate::activity::record(&db, &id, &after.project_id, "fork", title, after.message.as_deref(), Some(tone), after.last_check.unwrap_or(t));
+        }
+        if news && matches!(after.status.as_deref(), Some("pulled" | "safe" | "conflicting")) {
+            crate::automation_runtime::on_event(app, "fork", &after.project_id, vec![after.status.clone().unwrap_or_default()]);
         }
         if news {
             match after.status.as_deref() {

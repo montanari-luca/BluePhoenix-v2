@@ -52,6 +52,10 @@ A project manager for developers: a Tauri v2 desktop app (macOS, Windows, Linux)
 - `activity.rs`: the dashboard feed. Commits and fork events go in the local `activity` table (commits found by scanning since the last scan, triggered by the watcher). Automation runs and done to-dos are read straight from their tables in one UNION query.
 - `github.rs` talks to GitHub only through the user's `gh` CLI (no tokens in the app), caches 5 min, and emits `github-status`. A missing `gh`, a sign-out or a non-GitHub remote come back as `available: false` with a `reason`, never as errors.
 - `worktree.rs`: `git worktree` list/add/remove (the main worktree is protected). New git features that don't touch the status or log code go in their own module rather than growing `git.rs`.
+- Event triggers (`files`, `branch`, `push`, `fork`) carry an optional `trigger_filter` (globs, `automations/triggers.rs`). The watcher also watches a project's working tree, but only for projects targeted by an enabled `files` automation. `automation_runtime::git_events` tells branch switches and pushes apart from fetches and pulls.
+- `notify::send(app, kind, …)` is the only way to show a system notification; it honours the `notify.<kind>` setting.
+- `search.rs` backs the palette's "Found in your projects". `import.rs` uses `cli::add_folder`, the same code path as `bluephoenix add`.
+- Custom wizard templates (`templates.rs`, synced `project_templates`) store a tokenized plan (`{{name}}`, `{{folder}}`, `{{identifier}}`, `{{description}}`, `{{version}}`); `src/lib/initializer/custom.ts` converts both ways.
 - Postgres integration tests: `BP_TEST_PG=postgresql://user@localhost:5544/postgres?sslmode=disable cargo test pg_integration -- --test-threads=1`.
 - Git always goes through the system `git` CLI, so the user's credentials and SSH keys work. Fork conflict prediction needs git 2.38 or newer, for `merge-tree --write-tree`.
 - Secrets (AI keys, the database URL) live in the OS keychain through `keyring`, never in SQLite.

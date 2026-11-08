@@ -2,19 +2,7 @@ import { FileText, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { hasFolder } from "../lib/actions";
 import { api, errMsg } from "../lib/api";
-import {
-  AUTOMATION_TEMPLATES,
-  type HourUnit,
-  TRIGGER_LABELS,
-  formatHours,
-  fromLocalInput,
-  fromTemplate,
-  joinHours,
-  newAutomation,
-  splitHours,
-  toLocalInput,
-  validateAutomation,
-} from "../lib/automations";
+import { AUTOMATION_TEMPLATES, type HourUnit, TRIGGER_LABELS, formatHours, fromLocalInput, fromTemplate, joinHours, newAutomation, splitHours, toLocalInput, validateAutomation, TRIGGER_FILTER } from "../lib/automations";
 import { formatDateTime } from "../lib/format";
 import { useStore, logError } from "../lib/store";
 import type { Automation, AutomationRun, AutomationTrigger } from "../lib/types";
@@ -176,13 +164,32 @@ export function AutomationDialog({
             )}
           </div>
 
+          {TRIGGER_FILTER[form.trigger] && (
+            <Field label={TRIGGER_FILTER[form.trigger]!.label} hint={TRIGGER_FILTER[form.trigger]!.hint}>
+              <input
+                className="input font-mono text-xs"
+                value={form.triggerFilter ?? ""}
+                placeholder={TRIGGER_FILTER[form.trigger]!.placeholder}
+                onChange={(e) => set({ triggerFilter: e.target.value })}
+              />
+            </Field>
+          )}
+
           {timed && (
             <Field
               label="Repeat"
               hint={
                 form.repeatHours
                   ? `Runs again once ${formatHours(form.repeatHours)} have passed since the last run, checked ${
-                      form.trigger === "schedule" ? "every minute" : form.trigger === "launch" ? "at launch" : form.trigger === "quit" ? "at quit" : "at each commit"
+                      form.trigger === "schedule"
+                        ? "every minute"
+                        : form.trigger === "launch"
+                          ? "at launch"
+                          : form.trigger === "quit"
+                            ? "at quit"
+                            : form.trigger === "commit"
+                              ? "at each commit"
+                              : "each time it fires"
                     }.`
                   : form.trigger === "schedule"
                     ? "Without a repeat it runs once, at the date above."

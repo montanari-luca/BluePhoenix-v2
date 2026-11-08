@@ -30,11 +30,17 @@ Click **New automation** to start from an empty one. The arrow on its right offe
 | When quitting BluePhoenix | When you close the app, if due. Quitting waits up to a minute for it to finish. |
 | On a schedule | While BluePhoenix is open, checked every minute. |
 | After a commit | After you commit in BluePhoenix, for the project you committed in. |
+| When files change | When files matching your patterns change in the project folder (for example `src/**/*.ts, *.css`), from any editor. `.git`, `node_modules` and build folders are ignored, and changes made while an automation runs (or in the 10 seconds after) do not start another. |
+| When switching branch | When the project switches to another branch, from anywhere. Optionally only for some branches (`main, release/*`). |
+| After a push | When the branch is pushed, from BluePhoenix or a terminal. Optionally only for some branches. |
+| When a fork has upstream news | When a scheduled fork check finds new upstream commits, pulled them, or found a conflict. |
 | Manual run only | Only with **Run now**. |
 
 With no date and no repeat, an automation runs every time its trigger fires. With a repeat it runs again only after the interval, tracked per project. With only a date it runs once.
 
-Quit automations do not run if BluePhoenix crashes, and commits made from a terminal (`bluephoenix commit` included) do not trigger "after a commit" yet.
+Quit automations do not run if BluePhoenix crashes, and commits made from a terminal (`bluephoenix commit` included) do not trigger "after a commit" yet. File, branch and push triggers work while BluePhoenix is open, whoever makes the change. A repeat interval works as a cool-down for them: "run tests on change, at most every hour".
+
+If an automation fails, BluePhoenix shows a system notification even when its own notifications are off. Turn that off in **Settings → Notifications**.
 
 ## Requisites
 

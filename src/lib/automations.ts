@@ -5,7 +5,23 @@ export const TRIGGER_LABELS: Record<AutomationTrigger, string> = {
   quit: "When quitting BluePhoenix",
   schedule: "On a schedule (while BluePhoenix is open)",
   commit: "After a commit made in BluePhoenix",
+  files: "When files change",
+  branch: "When switching branch",
+  push: "After a push",
+  fork: "When a fork has upstream news",
   manual: "Manual run only",
+};
+
+/** What the filter field means for each event trigger (absent: no filter). */
+export const TRIGGER_FILTER: Partial<Record<AutomationTrigger, { label: string; placeholder: string; hint: string; required: boolean }>> = {
+  files: {
+    label: "Files",
+    placeholder: "src/**/*.ts, *.css",
+    hint: "Patterns for the files that count, separated by commas. node_modules, build folders and .git are ignored.",
+    required: true,
+  },
+  branch: { label: "Only for branches (optional)", placeholder: "main, release/*", hint: "Leave empty for any branch.", required: false },
+  push: { label: "Only for branches (optional)", placeholder: "main", hint: "Leave empty for any branch.", required: false },
 };
 
 export const TRIGGER_SHORT: Record<AutomationTrigger, string> = {
@@ -13,6 +29,10 @@ export const TRIGGER_SHORT: Record<AutomationTrigger, string> = {
   quit: "On quit",
   schedule: "Scheduled",
   commit: "After commit",
+  files: "Files change",
+  branch: "Branch switch",
+  push: "After push",
+  fork: "Fork news",
   manual: "Manual",
 };
 
@@ -134,6 +154,27 @@ export const AUTOMATION_TEMPLATES: AutomationTemplate[] = [
       ].join("\n"),
     },
   },
+  {
+    id: "test-on-change",
+    fields: {
+      name: "Run tests on change",
+      description: "Run the test suite whenever source files change",
+      trigger: "files",
+      triggerFilter: "src/**",
+      targetMode: "selected",
+      commands: "npm test --silent",
+    },
+  },
+  {
+    id: "install-on-switch",
+    fields: {
+      name: "Install after branch switch",
+      description: "Reinstall dependencies when you switch branch, in case they changed",
+      trigger: "branch",
+      targetMode: "selected",
+      commands: "[ -f package.json ] && npm install --no-audit --no-fund || true",
+    },
+  },
 ];
 
 export function fromTemplate(t: AutomationTemplate): Automation {
@@ -145,6 +186,7 @@ export function fromTemplate(t: AutomationTemplate): Automation {
 export function validateAutomation(a: Automation): string | null {
   if (!a.name.trim()) return "Give the automation a name";
   if (!a.commands.trim()) return "Add at least one command to run";
+  if (TRIGGER_FILTER[a.trigger]?.required && !a.triggerFilter?.trim()) return "Say which files count, for example src/**/*.ts";
   if (a.trigger === "schedule" && a.runAt == null && a.repeatHours == null) {
     return "A scheduled automation needs a date and time or a repeat interval";
   }

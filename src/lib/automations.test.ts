@@ -18,7 +18,7 @@ describe("templates", () => {
   it("are valid once a project is picked, and have unique ids", () => {
     expect(new Set(AUTOMATION_TEMPLATES.map((t) => t.id)).size).toBe(AUTOMATION_TEMPLATES.length);
     for (const t of AUTOMATION_TEMPLATES) {
-      const a = fromTemplate(t);
+      const a = { ...fromTemplate(t), projectIds: ["p1"] };
       expect(validateAutomation(a), t.id).toBeNull();
     }
   });

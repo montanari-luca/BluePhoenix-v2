@@ -11,6 +11,10 @@ Open **Settings** from the top bar.
 
 Your default editor and terminal, and where the **Run** buttons start commands (embedded or system terminal).
 
+## Notifications
+
+System notifications for: an automation that failed, a fork with upstream news, and to-dos due today (once a day from 9:00, overdue ones included). Each has its own switch.
+
 ## AI
 
 Local or cloud provider, model, API key. See [AI features](ai.md).

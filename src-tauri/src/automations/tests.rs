@@ -7,6 +7,7 @@ pub(super) fn auto(trigger: &str) -> Automation {
         description: String::new(),
         enabled: true,
         trigger: trigger.into(),
+        trigger_filter: None,
         run_at: None,
         repeat_hours: None,
         notify: "none".into(),
@@ -238,4 +239,39 @@ pub(super) async fn clean_git_requisite_blocks_dirty_repos() {
     std::fs::write(dir.join("new.txt"), "x").unwrap();
     let s = run_automation(&db, &a, &opts).await.unwrap();
     assert_eq!((s.ran(), s.skipped[0].reason.as_str()), (0, "uncommitted changes"));
+}
+
+#[test]
+fn event_trigger_filters() {
+    let mut a = auto("files");
+    assert!(!matches(&a, &["src/a.ts".into()]), "file changes need a pattern");
+    a.trigger_filter = Some("src/**/*.ts, *.css".into());
+    assert!(matches(&a, &["src/deep/a.ts".into()]));
+    assert!(matches(&a, &["styles/site.css".into()]), "a bare *.css matches in any folder");
+    assert!(!matches(&a, &["README.md".into()]));
+    let mut b = auto("branch");
+    assert!(matches(&b, &["anything".into()]), "no filter: any branch");
+    b.trigger_filter = Some("release/*".into());
+    assert!(matches(&b, &["release/1.2".into()]));
+    assert!(!matches(&b, &["main".into()]));
+    assert!(matches(&auto("fork"), &[]));
+}
+
+#[test]
+fn validates_event_trigger_filters() {
+    let db = temp_db();
+    let p = project(&db, "p", "Rust", &temp_dir());
+    let mut a = auto("files");
+    a.project_ids = vec![p.id.clone()];
+    assert!(save_automation(&db, a.clone()).is_err(), "files without a pattern");
+    a.trigger_filter = Some("src/[".into());
+    assert!(save_automation(&db, a.clone()).is_err(), "broken pattern");
+    a.trigger_filter = Some(" src/**/*.rs ".into());
+    let saved = save_automation(&db, a).unwrap();
+    assert_eq!(saved.trigger_filter.as_deref(), Some("src/**/*.rs"));
+    let mut s = auto("schedule");
+    s.project_ids = vec![p.id];
+    s.repeat_hours = Some(1);
+    s.trigger_filter = Some("ignored".into());
+    assert_eq!(save_automation(&db, s).unwrap().trigger_filter, None, "only event triggers keep a filter");
 }

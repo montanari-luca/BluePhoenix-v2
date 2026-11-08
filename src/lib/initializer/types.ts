@@ -58,7 +58,7 @@ export interface Template {
   id: string;
   name: string;
   blurb: string;
-  group: "Desktop & mobile" | "Web" | "Apple" | "Languages";
+  group: "Desktop & mobile" | "Web" | "Apple" | "Languages" | "My templates";
   /** lucide icon key, resolved by the dialog */
   icon: string;
   /** Project type shown in BluePhoenix */

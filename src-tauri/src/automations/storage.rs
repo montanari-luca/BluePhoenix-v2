@@ -10,6 +10,7 @@ pub(super) fn automation_from_row(r: &Row) -> rusqlite::Result<Automation> {
         description: r.get("description")?,
         enabled: r.get("enabled")?,
         trigger: r.get("trigger_kind")?,
+        trigger_filter: r.get("trigger_filter")?,
         run_at: r.get("run_at")?,
         repeat_hours: r.get("repeat_hours")?,
         notify: r.get("notify")?,
@@ -71,6 +72,14 @@ pub(super) fn validate(a: &mut Automation) -> Result<()> {
     if a.idle_hours.is_some_and(|h| h <= 0) {
         return err("The not-edited window must be at least 1 hour");
     }
+    a.trigger_filter = a.trigger_filter.take().map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+    match (a.trigger.as_str(), a.trigger_filter.as_deref()) {
+        ("files", None) => return err("Say which files count, for example src/**/*.ts"),
+        ("files" | "branch" | "push", Some(f)) => {
+            build(f).map_err(AppError::from)?;
+        }
+        _ => a.trigger_filter = None,
+    }
     if a.trigger == "schedule" && a.run_at.is_none() && a.repeat_hours.is_none() {
         return err("A scheduled automation needs a date and time or a repeat interval");
     }
@@ -100,14 +109,15 @@ pub fn save_automation(db: &Db, mut a: Automation) -> Result<Automation> {
     let conn = db.0.lock_ok();
     conn.execute(
         "INSERT INTO automations(id,name,description,enabled,trigger_kind,run_at,repeat_hours,notify,notify_before_min,
-           target_mode,project_ids,kind_filter,idle_hours,require_clean_git,require_git_repo,commands,sort,created_at,updated_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?18)
+           target_mode,project_ids,kind_filter,idle_hours,require_clean_git,require_git_repo,commands,sort,created_at,updated_at,trigger_filter)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?18,?19)
          ON CONFLICT(id) DO UPDATE SET name=?2,description=?3,enabled=?4,trigger_kind=?5,run_at=?6,repeat_hours=?7,
            notify=?8,notify_before_min=?9,target_mode=?10,project_ids=?11,kind_filter=?12,idle_hours=?13,
-           require_clean_git=?14,require_git_repo=?15,commands=?16,sort=?17,updated_at=?18",
+           require_clean_git=?14,require_git_repo=?15,commands=?16,sort=?17,updated_at=?18,trigger_filter=?19",
         params![
             a.id, a.name, a.description, a.enabled, a.trigger, a.run_at, a.repeat_hours, a.notify, a.notify_before_min,
-            a.target_mode, ids, a.kind_filter, a.idle_hours, a.require_clean_git, a.require_git_repo, a.commands, a.sort, t
+            a.target_mode, ids, a.kind_filter, a.idle_hours, a.require_clean_git, a.require_git_repo, a.commands, a.sort, t,
+            a.trigger_filter
         ],
     )?;
     drop(conn);

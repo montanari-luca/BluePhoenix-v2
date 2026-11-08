@@ -4,6 +4,7 @@
 // types.ts holds the shapes, helpers.ts the shared building blocks, templates/ one file per family.
 
 export * from "./types";
+export { customTemplate, templateBody } from "./custom";
 export { slugify, pascal, snake, parseDeps, SEMVER, REVERSE_DNS } from "./helpers";
 import type { Pm, Step, Tool, InitConfig, Template } from "./types";
 import { slugify, SEMVER, REVERSE_DNS, run } from "./helpers";
@@ -14,7 +15,7 @@ import { rust, python, go, nodeTs, flutter } from "./templates/languages";
 
 export const TEMPLATES: Template[] = [tauri, react, nextjs, astro, vue, sveltekit, expo, flutter, swiftui, rust, python, go, nodeTs];
 
-export const GROUPS: Template["group"][] = ["Desktop & mobile", "Web", "Apple", "Languages"];
+export const GROUPS: Template["group"][] = ["My templates", "Desktop & mobile", "Web", "Apple", "Languages"];
 
 export const findTemplate = (id: string) => TEMPLATES.find((t) => t.id === id);
 

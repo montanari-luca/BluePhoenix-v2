@@ -10,6 +10,7 @@ import { AiSection } from "./settings/AiSection";
 import { CliSection } from "./settings/CliSection";
 import { UpdatesSection } from "./settings/UpdatesSection";
 import { BackupSection } from "./settings/BackupSection";
+import { NotificationsSection } from "./settings/NotificationsSection";
 import { ConflictsSection } from "./settings/ConflictsSection";
 
 export default function Settings() {
@@ -73,6 +74,7 @@ export default function Settings() {
           </Row>
         </Section>
 
+        <NotificationsSection />
         <AiSection />
         <SyncSection />
         <ConflictsSection />

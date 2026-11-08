@@ -2,13 +2,15 @@ import { Command } from "cmdk";
 import {
   Archive, ArchiveRestore, ArrowDownToLine, ArrowUpFromLine, Clock, Code2, FolderOpen, FolderPlus, Globe, LayoutDashboard,
   Moon, Palette, Play, RefreshCw, Search, Settings as SettingsIcon, Sparkles, SquareTerminal, Star, Sun, Terminal, Zap,
+  CheckSquare, FileText, NotebookText,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useMatch, useNavigate } from "react-router-dom";
 import { bulkGit, gitAction, hasFolder, logTime, navigate, openEditor, openExternal, openTerminal, runCommand, toggleFavorite } from "../lib/actions";
 import { api, errMsg } from "../lib/api";
 import { formatMinutes } from "../lib/format";
-import { useStore } from "../lib/store";
+import { logError, useStore } from "../lib/store";
+import type { SearchHit } from "../lib/types";
 import { Github, Kbd } from "./ui";
 
 interface Item {
@@ -47,6 +49,27 @@ export function CommandPalette() {
   const match = useMatch("/project/:id");
   const current = projects.find((p) => p.id === match?.params.id);
   const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+
+  // Search inside every project (to-dos, notes, commands, files) as you type.
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) {
+      setHits([]);
+      return;
+    }
+    let stale = false;
+    const t = setTimeout(() => {
+      void api
+        .searchAll(q, 6)
+        .then((h) => !stale && setHits(h))
+        .catch(logError("search"));
+    }, 140);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [query, open]);
 
   // ⌘K / Ctrl+K
   useEffect(() => {
@@ -131,6 +154,7 @@ export function CommandPalette() {
       heading: "General",
       items: [
         { id: "add", label: "Add project…", icon: <FolderPlus size={15} />, run: () => { nav("/"); setAdd(true); } },
+        { id: "import", label: "Import projects from a folder…", icon: <FolderOpen size={15} />, keywords: ["bulk", "scan", "repositories"], run: () => { nav("/"); useStore.getState().setImport(true); } },
         { id: "new", label: "New project…", icon: <Sparkles size={15} />, run: () => { nav("/"); setNew(true); } },
         { id: "refresh", label: "Refresh all git statuses", icon: <RefreshCw size={15} />, run: () => void refreshAll() },
         { id: "fetch-all", label: "Fetch all projects", icon: <RefreshCw size={15} />, run: () => void bulkGit(projects, "fetch") },
@@ -156,6 +180,32 @@ export function CommandPalette() {
     return g.filter((x) => x.items.length > 0);
   }, [current, projects, editors, terminals, cmdsByProject, nav, setAdd, setNew, refreshAll, setSetting, toast, setUpdate]);
 
+  const found: Group | null = useMemo(() => {
+    if (hits.length === 0) return null;
+    const icon = { todo: <CheckSquare size={15} />, page: <NotebookText size={15} />, command: <Play size={15} />, file: <FileText size={15} /> };
+    const tab = { todo: "todos", page: "todos", command: "commands", file: "files" };
+    return {
+      heading: "Found in your projects",
+      items: hits.map((h) => ({
+        id: `hit-${h.kind}-${h.projectId}-${h.id}`,
+        label: h.title,
+        icon: icon[h.kind],
+        hint: h.snippet ? `${h.projectName} · ${h.snippet}` : h.projectName,
+        // cmdk ranks by its own fuzzy match; the query itself makes sure notes-only matches stay visible.
+        keywords: [query.trim(), h.snippet ?? "", h.projectName],
+        run: () => {
+          const p = projects.find((x) => x.id === h.projectId);
+          if (h.kind === "file" && p) return openEditor(p, undefined, h.title);
+          if (h.kind === "command" && p) {
+            const c = (cmdsByProject[p.id] ?? []).find((x) => x.id === h.id);
+            if (c) return runCommand(p, c);
+          }
+          nav(`/project/${h.projectId}?tab=${tab[h.kind]}`);
+        },
+      })),
+    };
+  }, [hits, query, projects, cmdsByProject, nav]);
+
   if (!open) return null;
   const close = () => setOpen(false);
 
@@ -180,7 +230,7 @@ export function CommandPalette() {
         </div>
         <Command.List className="max-h-[52vh] overflow-y-auto p-2">
           <Command.Empty className="px-3 py-8 text-center text-[13px] text-[var(--fg-faint)]">No matching action.</Command.Empty>
-          {groups.map((grp) => (
+          {[...groups, ...(found ? [found] : [])].map((grp) => (
             <Command.Group key={grp.heading} heading={grp.heading}>
               {grp.items.map((it) => (
                 <Command.Item

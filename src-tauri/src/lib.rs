@@ -14,12 +14,16 @@ mod git;
 mod git_share;
 mod github;
 mod icons;
+mod import;
 mod initializer;
 mod launch;
+mod notify;
 mod project_file;
 mod pty;
 mod scheduler;
+mod search;
 mod sync;
+mod templates;
 mod updater;
 mod watch;
 mod worktree;
@@ -128,7 +132,7 @@ pub fn run() {
             app.manage(db);
             build_main_window(app)?;
             // Every periodic job runs on one scheduler loop.
-            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs(), git_share::jobs(), backup::jobs(), activity::jobs(), github::jobs()].into_iter().flatten().collect());
+            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs(), git_share::jobs(), backup::jobs(), activity::jobs(), github::jobs(), notify::jobs()].into_iter().flatten().collect());
             {
                 // Installs / repairs the `bluephoenix` terminal command in the background.
                 let handle = app.handle().clone();
@@ -151,6 +155,14 @@ pub fn run() {
             system_info,
             watch::git_watch_sync,
             activity::activity_feed,
+            import::import_scan,
+            search::search_all,
+            templates::templates_list,
+            templates::template_save,
+            templates::template_delete,
+            templates::template_export,
+            templates::template_import,
+            import::import_add,
             github::github_status,
             github::github_cached,
             git::git_pull_ff,

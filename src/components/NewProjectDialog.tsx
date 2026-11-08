@@ -1,16 +1,31 @@
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errMsg, uid } from "../lib/api";
-import { buildPlan, defaultConfig, extraCommands, requiredTools, resolved, validate, type InitConfig, type Pm, type Step, type Template } from "../lib/initializer";
+import {
+  TEMPLATES,
+  buildPlan,
+  customTemplate,
+  defaultConfig,
+  extraCommands,
+  requiredTools,
+  resolved,
+  slugify,
+  templateBody,
+  validate,
+  type InitConfig,
+  type Pm,
+  type Step,
+  type Template,
+} from "../lib/initializer";
 import { useStore, logError, reportError } from "../lib/store";
-import type { IconInfo, InitProgress, InitResult, Preflight, Project } from "../lib/types";
+import type { CustomTemplate, IconInfo, InitProgress, InitResult, Preflight, Project } from "../lib/types";
 import { ConfigureStep } from "./new-project/ConfigureStep";
 import { RunStep } from "./new-project/RunStep";
 import { PM_ORDER, type Phase, type StepState } from "./new-project/shared";
 import { TypeStep } from "./new-project/TypeStep";
 import { goToProject } from "./projectMenu";
-import { Modal } from "./ui";
+import { Field, Modal, useConfirm } from "./ui";
 
 // The New project wizard: pick a template (TypeStep), answer its questions (ConfigureStep), then
 // watch the backend run the plan (RunStep). This file holds the state and the actions.
@@ -36,6 +51,67 @@ export function NewProjectDialog({ open: isOpen, onClose }: { open: boolean; onC
 
   const running = runId !== null && result === null;
 
+  // the user's own templates
+  const [custom, setCustom] = useState<CustomTemplate[]>([]);
+  const [saving, setSaving] = useState<{ name: string; blurb: string } | null>(null);
+  const { confirm, node: confirmNode } = useConfirm();
+  const loadCustom = () => api.templates().then(setCustom).catch(logError("load templates"));
+  const allTemplates = useMemo(() => [...custom.map(customTemplate), ...TEMPLATES], [custom]);
+  const customOf = (t: Template) => custom.find((c) => `custom:${c.id}` === t.id);
+
+  async function importTemplate() {
+    const file = await open({ title: "Import a template", multiple: false, filters: [{ name: "BluePhoenix template", extensions: ["json"] }] });
+    if (typeof file !== "string") return;
+    try {
+      const t = await api.importTemplate(file);
+      await loadCustom();
+      toast({ kind: "success", title: `Imported “${t.name}”`, detail: "It is under My templates." });
+    } catch (e) {
+      toast({ kind: "error", title: "Could not import the template", detail: errMsg(e) });
+    }
+  }
+
+  async function exportTemplate(t: Template) {
+    const c = customOf(t);
+    if (!c) return;
+    const path = await save({ title: "Export template", defaultPath: `${slugify(c.name) || "template"}.bluephoenix-template.json`, filters: [{ name: "JSON", extensions: ["json"] }] });
+    if (!path) return;
+    await api.exportTemplate(c.id, path).then(
+      () => toast({ kind: "success", title: "Template exported", detail: path }),
+      (e) => toast({ kind: "error", title: "Could not export", detail: errMsg(e) }),
+    );
+  }
+
+  async function deleteTemplate(t: Template) {
+    const c = customOf(t);
+    if (!c || !(await confirm(`Delete the template “${c.name}”? Projects made from it are not affected.`))) return;
+    await api.deleteTemplate(c.id).catch(reportError("Could not delete the template"));
+    await loadCustom();
+  }
+
+  async function saveTemplate() {
+    if (!tpl || !cfg || !saving) return;
+    const base = customOf(tpl);
+    try {
+      await api.saveTemplate({
+        id: uid(),
+        name: saving.name.trim(),
+        blurb: saving.blurb.trim(),
+        kind: tpl.kind,
+        icon: tpl.icon,
+        baseId: base?.baseId ?? tpl.id,
+        body: templateBody(tpl, cfg),
+        createdAt: 0,
+        updatedAt: 0,
+      });
+      setSaving(null);
+      await loadCustom();
+      toast({ kind: "success", title: `Saved “${saving.name.trim()}”`, detail: "Find it under My templates next time." });
+    } catch (e) {
+      toast({ kind: "error", title: "Could not save the template", detail: errMsg(e) });
+    }
+  }
+
   useEffect(() => {
     if (!isOpen) return;
     setPhase("type");
@@ -47,6 +123,7 @@ export function NewProjectDialog({ open: isOpen, onClose }: { open: boolean; onC
     setRunId(null);
     setLog([]);
     void api.initTools(["pnpm", "npm", "yarn", "bun", "git", "gh"]).then(setTools);
+    void loadCustom();
   }, [isOpen]);
 
   useEffect(() => {
@@ -264,6 +341,14 @@ export function NewProjectDialog({ open: isOpen, onClose }: { open: boolean; onC
   const footer =
     phase === "configure" ? (
       <>
+        <button
+          className="btn btn-ghost mr-auto"
+          disabled={!tpl || !cfg?.name.trim()}
+          title="Keep these choices (steps, dependencies, files) as a template for next time"
+          onClick={() => setSaving({ name: `My ${tpl?.name ?? "template"}`, blurb: "" })}
+        >
+          Save as template…
+        </button>
         <button className="btn" onClick={onClose}>
           Cancel
         </button>
@@ -300,7 +385,44 @@ export function NewProjectDialog({ open: isOpen, onClose }: { open: boolean; onC
 
   return (
     <Modal open={isOpen} onClose={close} title={phase === "run" ? `Creating ${r?.name.trim() ?? "project"}` : "New project"} width={720} footer={footer}>
-      {phase === "type" ? <TypeStep onPick={pick} /> : phase === "configure" ? configureView : runView}
+      {phase === "type" ? (
+        <TypeStep templates={allTemplates} onPick={pick} onImport={() => void importTemplate()} onExport={(t) => void exportTemplate(t)} onDelete={(t) => void deleteTemplate(t)} />
+      ) : phase === "configure" ? (
+        configureView
+      ) : (
+        runView
+      )}
+      <Modal
+        open={!!saving}
+        onClose={() => setSaving(null)}
+        title="Save as template"
+        width={460}
+        footer={
+          <>
+            <button className="btn" onClick={() => setSaving(null)}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" disabled={!saving?.name.trim()} onClick={() => void saveTemplate()}>
+              Save template
+            </button>
+          </>
+        }
+      >
+        {saving && (
+          <div className="flex flex-col gap-3">
+            <p className="text-[13px] text-[var(--fg-muted)]">
+              Saves the steps, dependencies and files of this setup. Next time you only enter a name; the project name, folder and identifier are filled in for you. Git and icons are chosen each time.
+            </p>
+            <Field label="Template name">
+              <input className="input" autoFocus value={saving.name} onChange={(e) => setSaving({ ...saving, name: e.target.value })} />
+            </Field>
+            <Field label="Short description (optional)">
+              <input className="input" value={saving.blurb} placeholder="React + Tailwind + our lint setup" onChange={(e) => setSaving({ ...saving, blurb: e.target.value })} />
+            </Field>
+          </div>
+        )}
+      </Modal>
+      {confirmNode}
     </Modal>
   );
 }

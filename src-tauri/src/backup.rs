@@ -32,6 +32,7 @@ const TABLES: &[&str] = &[
     "automation_runs",
     "automation_state",
     "fork_sync",
+    "project_templates",
     "settings",
 ];
 

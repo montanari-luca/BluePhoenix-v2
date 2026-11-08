@@ -29,6 +29,7 @@ interface State {
   paletteOpen: boolean;
   addProjectOpen: boolean;
   newProjectOpen: boolean;
+  importOpen: boolean;
   /** project id -> label of the running action */
   busy: Record<string, string | undefined>;
   update: { latest: string; downloadUrl: string | null } | null;
@@ -49,6 +50,7 @@ interface State {
   setPalette: (open: boolean) => void;
   setAddProject: (open: boolean) => void;
   setNewProject: (open: boolean) => void;
+  setImport: (open: boolean) => void;
   setBusy: (id: string, label?: string) => void;
   setUpdate: (u: State["update"]) => void;
 }
@@ -103,6 +105,7 @@ export const useStore = create<State>((set, get) => ({
   paletteOpen: false,
   addProjectOpen: false,
   newProjectOpen: false,
+  importOpen: false,
   busy: {},
   update: null,
 
@@ -238,6 +241,7 @@ export const useStore = create<State>((set, get) => ({
   setPalette: (paletteOpen) => set({ paletteOpen }),
   setAddProject: (addProjectOpen) => set({ addProjectOpen }),
   setNewProject: (newProjectOpen) => set({ newProjectOpen }),
+  setImport: (importOpen) => set({ importOpen }),
   setBusy: (id, label) => set((st) => ({ busy: { ...st.busy, [id]: label } })),
   setUpdate: (update) => set({ update }),
 }));

@@ -130,6 +130,37 @@ pub async fn run_trigger(db: &Db, trigger: &str, project_id: Option<&str>, deadl
     out
 }
 
+/// Runs the enabled automations of an event `trigger` in one project, when their filter matches
+/// `values` (changed paths, or the branch). Returns only those that ran something.
+pub async fn run_event(db: &Db, trigger: &str, project_id: &str, values: &[String]) -> Vec<RunSummary> {
+    let opts = RunOpts { only_due: true, project_id: Some(project_id.to_string()), deadline: None };
+    let mut out = vec![];
+    for a in list_automations(db).unwrap_or_default() {
+        if !a.enabled || a.trigger != trigger || !matches(&a, values) {
+            continue;
+        }
+        if let Ok(s) = run_automation(db, &a, &opts).await
+            && s.ran() > 0
+        {
+            out.push(s);
+        }
+    }
+    out
+}
+
+/// Projects that an enabled automation of `trigger` targets (used to decide what to watch).
+pub fn watched_projects(db: &Db, trigger: &str) -> Vec<String> {
+    let mut ids: Vec<String> = list_automations(db)
+        .unwrap_or_default()
+        .iter()
+        .filter(|a| a.enabled && a.trigger == trigger)
+        .flat_map(|a| resolve_targets(db, a).unwrap_or_default().into_iter().map(|p| p.id))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 /// Whether any enabled automation of `trigger` has a project due (requisites not checked).
 pub fn any_due(db: &Db, trigger: &str) -> bool {
     let t = now();

@@ -15,7 +15,7 @@ use tauri::State;
 use tokio::process::Command;
 
 use crate::db::{active_projects, now, Db, Project};
-use crate::error::{err, LockExt, Result};
+use crate::error::{err, AppError, LockExt, Result};
 
 const HOUR_MS: i64 = 3_600_000;
 const RUN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -23,7 +23,7 @@ const OUTPUT_TAIL: usize = 4000;
 const RUNS_KEPT: i64 = 200;
 const MAX_WALK: usize = 200_000;
 
-const TRIGGERS: [&str; 5] = ["launch", "quit", "manual", "schedule", "commit"];
+const TRIGGERS: [&str; 9] = ["launch", "quit", "manual", "schedule", "commit", "files", "branch", "push", "fork"];
 const NOTIFY: [&str; 3] = ["none", "on_run", "before"];
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -34,8 +34,12 @@ pub struct Automation {
     #[serde(default)]
     pub description: String,
     pub enabled: bool,
-    /// launch | quit | manual | schedule | commit
+    /// launch | quit | manual | schedule | commit | files | branch | push | fork
     pub trigger: String,
+    /// `files`: which changed paths count (globs, e.g. `src/**/*.ts`). `branch` / `push`: which
+    /// branches (globs, e.g. `release/*`); empty means any.
+    #[serde(default)]
+    pub trigger_filter: Option<String>,
     /// First time it may run (epoch ms).
     pub run_at: Option<i64>,
     pub repeat_hours: Option<i64>,
@@ -102,6 +106,7 @@ mod runner;
 mod schedule;
 mod storage;
 mod targets;
+mod triggers;
 #[cfg(test)]
 mod tests;
 
@@ -109,6 +114,7 @@ pub use runner::*;
 pub use schedule::*;
 pub use storage::*;
 pub use targets::*;
+pub use triggers::*;
 
 // ---------- commands ----------
 

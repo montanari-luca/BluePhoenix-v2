@@ -199,7 +199,7 @@ export interface SyncStatus {
   lastError: string | null;
 }
 
-export type AutomationTrigger = "launch" | "quit" | "manual" | "schedule" | "commit";
+export type AutomationTrigger = "launch" | "quit" | "manual" | "schedule" | "commit" | "files" | "branch" | "push" | "fork";
 export type AutomationNotify = "none" | "on_run" | "before";
 
 export interface Automation {
@@ -208,6 +208,8 @@ export interface Automation {
   description: string;
   enabled: boolean;
   trigger: AutomationTrigger;
+  /** files: globs for the changed paths (required). branch / push: branch globs (optional). */
+  triggerFilter?: string | null;
   /** Epoch ms: the first time it may run. */
   runAt: number | null;
   repeatHours: number | null;
@@ -378,4 +380,39 @@ export interface GithubStatus {
   reviewRequested: number[];
   ci: CiRun | null;
   checkedAt: number;
+}
+
+export interface SearchHit {
+  kind: "todo" | "page" | "command" | "file";
+  id: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  snippet: string | null;
+}
+
+export interface FoundRepo {
+  path: string;
+  name: string;
+  kind: string;
+  description: string | null;
+  added: boolean;
+}
+
+export interface ImportResult {
+  added: string[];
+  skipped: string[];
+  failed: [string, string][];
+}
+
+export interface CustomTemplate {
+  id: string;
+  name: string;
+  blurb: string;
+  kind: string;
+  icon: string;
+  baseId: string | null;
+  body: { steps: import("./initializer").Step[]; tools: string[]; commands: { label: string; command: string }[]; icons: string[] };
+  createdAt: number;
+  updatedAt: number;
 }

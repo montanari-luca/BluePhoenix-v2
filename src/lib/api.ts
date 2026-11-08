@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Step } from "./initializer";
 import type {
   Activity,
+  CustomTemplate,
+  FoundRepo,
+  ImportResult,
+  SearchHit,
   GithubStatus,
   Worktree,
   AppInfo,
@@ -51,6 +55,14 @@ export const api = {
     invoke<Activity[]>("activity_feed", { limit: opts.limit ?? null, before: opts.before ?? null, kinds: opts.kinds ?? null }),
   githubStatus: (projectId: string, refresh = false) => invoke<GithubStatus>("github_status", { projectId, refresh }),
   githubCached: () => invoke<GithubStatus[]>("github_cached"),
+  searchAll: (query: string, limit?: number) => invoke<SearchHit[]>("search_all", { query, limit: limit ?? null }),
+  importScan: (root: string, depth?: number) => invoke<FoundRepo[]>("import_scan", { root, depth: depth ?? null }),
+  importAdd: (paths: string[]) => invoke<ImportResult>("import_add", { paths }),
+  templates: () => invoke<CustomTemplate[]>("templates_list"),
+  saveTemplate: (template: CustomTemplate) => invoke<CustomTemplate>("template_save", { template }),
+  deleteTemplate: (id: string) => invoke<void>("template_delete", { id }),
+  exportTemplate: (id: string, path: string) => invoke<void>("template_export", { id, path }),
+  importTemplate: (path: string) => invoke<CustomTemplate>("template_import", { path }),
 
   // data
   projects: () => invoke<ProjectSummary[]>("projects_list"),

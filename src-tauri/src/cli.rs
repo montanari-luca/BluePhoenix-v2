@@ -299,29 +299,30 @@ fn indent(s: &str) -> String {
 
 // ---------- bluephoenix add ----------
 
-async fn add(path_arg: Option<&str>) -> Result<()> {
-    let dir = match path_arg {
-        Some(p) => PathBuf::from(p),
-        None => std::env::current_dir()?,
-    };
+/// What adding a folder did, for the CLI's report and the app's bulk import.
+pub enum AddOutcome {
+    Exists { name: String },
+    Added { project: Box<db::Project>, path: String, commands: usize, restored: bool, wrote_file: bool, files: usize, truncated: bool },
+}
+
+/// Adds a folder as a project the way `bluephoenix add` does: detects the type and commands, or
+/// restores them from its `.bluephoenix` file, writes that file, and indexes the files.
+pub async fn add_folder(db: &Db, dir: &Path) -> Result<AddOutcome> {
     if !dir.is_dir() {
         return err(format!("'{}' is not a folder", dir.display()));
     }
-    let dir = std::fs::canonicalize(&dir)?;
+    let dir = std::fs::canonicalize(dir)?;
     let path = display_path(&dir);
-    let db = open_db()?;
-
     let known = |p: &str| std::fs::canonicalize(p).map(|c| display_path(&c)).unwrap_or_else(|_| p.to_string());
-    if let Some(existing) = db::list_projects(&db)?.into_iter().find(|s| known(&s.project.path) == path) {
-        println!("{path} is already a project ({}).", existing.project.name);
-        return Ok(());
+    if let Some(existing) = db::list_projects(db)?.into_iter().find(|s| known(&s.project.path) == path) {
+        return Ok(AddOutcome::Exists { name: existing.project.name });
     }
 
     let d = detect::detect_path(&path).await?;
     let restored = project_file::read(&dir);
     let now = db::now();
     let saved = db::save_project(
-        &db,
+        db,
         db::Project {
             id: uuid::Uuid::new_v4().to_string(),
             name: match &restored {
@@ -362,7 +363,7 @@ async fn add(path_arg: Option<&str>) -> Result<()> {
     };
     for (i, c) in commands.iter().enumerate() {
         db::save_command(
-            &db,
+            db,
             &db::Command {
                 id: uuid::Uuid::new_v4().to_string(),
                 project_id: saved.id.clone(),
@@ -392,19 +393,43 @@ async fn add(path_arg: Option<&str>) -> Result<()> {
         .map_err(|e| eprintln!("warning: could not write {}: {e}", project_file::FILE_NAME))
         .is_ok();
     let (entries, truncated) = files::scan_files(&dir);
-    files::store_files(&db, &saved.id, &entries)?;
+    files::store_files(db, &saved.id, &entries)?;
 
-    println!("Added {} ({})", saved.name, saved.kind);
-    println!("  Folder:    {path}");
-    if let Some(url) = &saved.github_url {
-        println!("  GitHub:    {url}");
-    }
-    println!("  Commands:  {command_count} {}", if restored.is_some() { "restored" } else { "detected" });
-    println!("  Files:     {} indexed{}", entries.len(), if truncated { " (list truncated)" } else { "" });
-    if restored.is_some() {
-        println!("  Settings:  restored from {}", project_file::FILE_NAME);
-    } else if wrote_file {
-        println!("  Settings:  saved to {}", project_file::FILE_NAME);
+    Ok(AddOutcome::Added {
+        project: Box::new(saved),
+        path,
+        commands: command_count,
+        restored: restored.is_some(),
+        wrote_file,
+        files: entries.len(),
+        truncated,
+    })
+}
+
+async fn add(path_arg: Option<&str>) -> Result<()> {
+    let dir = match path_arg {
+        Some(p) => PathBuf::from(p),
+        None => std::env::current_dir()?,
+    };
+    let db = open_db()?;
+    match add_folder(&db, &dir).await? {
+        AddOutcome::Exists { name } => {
+            println!("{} is already a project ({name}).", dir.display());
+        }
+        AddOutcome::Added { project: saved, path, commands, restored, wrote_file, files, truncated } => {
+            println!("Added {} ({})", saved.name, saved.kind);
+            println!("  Folder:    {path}");
+            if let Some(url) = &saved.github_url {
+                println!("  GitHub:    {url}");
+            }
+            println!("  Commands:  {commands} {}", if restored { "restored" } else { "detected" });
+            println!("  Files:     {files} indexed{}", if truncated { " (list truncated)" } else { "" });
+            if restored {
+                println!("  Settings:  restored from {}", project_file::FILE_NAME);
+            } else if wrote_file {
+                println!("  Settings:  saved to {}", project_file::FILE_NAME);
+            }
+        }
     }
     Ok(())
 }

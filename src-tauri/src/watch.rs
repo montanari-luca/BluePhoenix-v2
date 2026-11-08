@@ -22,16 +22,23 @@ const DEBOUNCE: Duration = Duration::from_millis(400);
 /// Re-check which projects exist and fix up watches (added, removed, moved, `git init`).
 const RESYNC_EVERY: Duration = Duration::from_secs(30);
 
-/// One watched path and the project it belongs to.
-type Routes = Arc<Mutex<Vec<(PathBuf, String)>>>;
+/// One watched path, the project it belongs to, and whether it is the working tree (for
+/// file-change automations) rather than git metadata.
+type Routes = Arc<Mutex<Vec<(PathBuf, String, bool)>>>;
+
+/// Folders inside a working tree whose changes never count as "files changed".
+const TREE_SKIP: &[&str] = &[".git", "node_modules", "target", "dist", "build", ".next", ".nuxt", ".svelte-kit", ".venv", "venv", "__pycache__", ".turbo", ".cache", "DerivedData", "Pods"];
 
 #[derive(Default)]
 pub struct GitWatch(Mutex<Option<Inner>>);
 
+/// (project path, whether its working tree is watched too, the paths watched for it)
+type Watched = (String, bool, Vec<(PathBuf, RecursiveMode)>);
+
 struct Inner {
     debouncer: Debouncer<RecommendedWatcher>,
-    /// project id -> (project path, the paths we watch for it)
-    watched: HashMap<String, (String, Vec<(PathBuf, RecursiveMode)>)>,
+    /// project id -> what is watched for it
+    watched: HashMap<String, Watched>,
     routes: Routes,
 }
 
@@ -84,15 +91,15 @@ fn is_noise(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == "lock")
 }
 
-/// Which projects a batch of changed paths belongs to.
-fn projects_for(routes: &[(PathBuf, String)], paths: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
+/// Which projects a batch of changed paths belongs to (git metadata routes only).
+fn projects_for(routes: &[(PathBuf, String, bool)], paths: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
     let mut ids = HashSet::new();
     for path in paths {
         if is_noise(&path) {
             continue;
         }
-        for (root, id) in routes {
-            if path.starts_with(root) {
+        for (root, id, tree) in routes {
+            if !tree && path.starts_with(root) {
                 ids.insert(id.clone());
             }
         }
@@ -102,16 +109,44 @@ fn projects_for(routes: &[(PathBuf, String)], paths: impl IntoIterator<Item = Pa
     v
 }
 
+/// Working-tree changes per project, as `/`-separated paths relative to the project folder.
+fn files_for(routes: &[(PathBuf, String, bool)], paths: &[PathBuf]) -> HashMap<String, Vec<String>> {
+    let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    for path in paths {
+        for (root, id, tree) in routes {
+            let Some(rel) = path.strip_prefix(root).ok().filter(|_| *tree) else { continue };
+            let parts: Vec<String> = rel.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+            if parts.is_empty() || parts.iter().any(|p| TREE_SKIP.contains(&p.as_str())) {
+                continue;
+            }
+            let rel = parts.join("/");
+            let list = out.entry(id.clone()).or_default();
+            if !list.contains(&rel) {
+                list.push(rel);
+            }
+        }
+    }
+    out
+}
+
 fn start(app: &AppHandle) -> Result<Inner> {
     let routes: Routes = Arc::default();
     let r = routes.clone();
     let handle = app.clone();
     let debouncer = new_debouncer(DEBOUNCE, move |res: DebounceEventResult| {
         let Ok(events) = res else { return };
-        let ids = projects_for(&r.lock_ok(), events.into_iter().map(|e| e.path));
+        let paths: Vec<PathBuf> = events.into_iter().map(|e| e.path).collect();
+        let (ids, files) = {
+            let routes = r.lock_ok();
+            (projects_for(&routes, paths.iter().cloned()), files_for(&routes, &paths))
+        };
+        for (id, changed) in files {
+            crate::automation_runtime::on_files(&handle, &id, changed);
+        }
         if !ids.is_empty() {
             crate::git_share::changed(&handle, &ids);
             crate::activity::changed(&handle, &ids);
+            crate::automation_runtime::on_git_changed(&handle, &ids);
             let _ = handle.emit("git-changed", ids);
         }
     })
@@ -126,6 +161,8 @@ pub fn sync(app: &AppHandle) -> Result<()> {
         .filter(|s| !s.project.path.is_empty())
         .map(|s| (s.project.id, s.project.path))
         .collect();
+    // Working trees are watched only for projects that have a file-change automation.
+    let tree: HashSet<String> = crate::automations::watched_projects(&app.state::<Db>(), "files").into_iter().collect();
     let state = app.state::<GitWatch>();
     let mut guard = state.0.lock_ok();
     if guard.is_none() {
@@ -137,11 +174,11 @@ pub fn sync(app: &AppHandle) -> Result<()> {
     let stale: Vec<String> = inner
         .watched
         .iter()
-        .filter(|(id, (path, _))| wanted.get(*id) != Some(path))
+        .filter(|(id, (path, t, _))| wanted.get(*id) != Some(path) || *t != tree.contains(*id))
         .map(|(id, _)| id.clone())
         .collect();
     for id in stale {
-        if let Some((_, targets)) = inner.watched.remove(&id) {
+        if let Some((_, _, targets)) = inner.watched.remove(&id) {
             for (p, _) in targets {
                 let _ = inner.debouncer.watcher().unwatch(&p);
             }
@@ -152,7 +189,11 @@ pub fn sync(app: &AppHandle) -> Result<()> {
         if inner.watched.contains_key(id) {
             continue;
         }
-        let Some(targets) = watch_targets(Path::new(path)) else { continue };
+        let Some(mut targets) = watch_targets(Path::new(path)) else { continue };
+        let with_tree = tree.contains(id);
+        if with_tree {
+            targets.push((PathBuf::from(path), RecursiveMode::Recursive));
+        }
         let mut ok = vec![];
         for (p, mode) in targets {
             if inner.debouncer.watcher().watch(&p, mode).is_ok() {
@@ -160,11 +201,17 @@ pub fn sync(app: &AppHandle) -> Result<()> {
             }
         }
         if !ok.is_empty() {
-            inner.watched.insert(id.clone(), (path.clone(), ok));
+            inner.watched.insert(id.clone(), (path.clone(), with_tree, ok));
         }
     }
-    *inner.routes.lock_ok() =
-        inner.watched.iter().flat_map(|(id, (_, t))| t.iter().map(move |(p, _)| (p.clone(), id.clone()))).collect();
+    *inner.routes.lock_ok() = inner
+        .watched
+        .iter()
+        .flat_map(|(id, (path, with_tree, t))| {
+            let root = PathBuf::from(path);
+            t.iter().map(move |(p, _)| (p.clone(), id.clone(), *with_tree && *p == root))
+        })
+        .collect();
     Ok(())
 }
 
@@ -240,7 +287,7 @@ mod tests {
         // Canonical paths: on macOS the temp dir is a symlink and events arrive with the real path.
         let root = d.canonicalize().unwrap();
         let targets = watch_targets(&root).unwrap();
-        let routes: Vec<_> = targets.iter().map(|(p, _)| (p.clone(), "p1".to_string())).collect();
+        let routes: Vec<_> = targets.iter().map(|(p, _)| (p.clone(), "p1".to_string(), false)).collect();
         let (tx, rx) = std::sync::mpsc::channel();
         let mut deb = new_debouncer(Duration::from_millis(100), move |res: DebounceEventResult| {
             if let Ok(ev) = res {
@@ -266,7 +313,11 @@ mod tests {
 
     #[test]
     fn routes_changes_to_projects_and_skips_lock_files() {
-        let routes = vec![(PathBuf::from("/a/.git"), "a".to_string()), (PathBuf::from("/b/.git/refs"), "b".to_string())];
+        let routes = vec![
+            (PathBuf::from("/a/.git"), "a".to_string(), false),
+            (PathBuf::from("/b/.git/refs"), "b".to_string(), false),
+            (PathBuf::from("/a"), "a".to_string(), true),
+        ];
         let ids = projects_for(
             &routes,
             [PathBuf::from("/a/.git/index"), PathBuf::from("/b/.git/refs/heads/main"), PathBuf::from("/a/.git/index.lock")],
@@ -274,5 +325,24 @@ mod tests {
         assert_eq!(ids, vec!["a", "b"]);
         assert!(projects_for(&routes, [PathBuf::from("/a/.git/HEAD.lock")]).is_empty());
         assert!(projects_for(&routes, [PathBuf::from("/c/.git/HEAD")]).is_empty());
+        assert!(projects_for(&routes, [PathBuf::from("/a/src/main.rs")]).is_empty(), "working files are not git changes");
+    }
+
+    #[test]
+    fn working_tree_changes_skip_git_and_build_folders() {
+        let routes = vec![(PathBuf::from("/a/.git"), "a".to_string(), false), (PathBuf::from("/a"), "a".to_string(), true)];
+        let f = files_for(
+            &routes,
+            &[
+                PathBuf::from("/a/src/main.ts"),
+                PathBuf::from("/a/src/main.ts"),
+                PathBuf::from("/a/.git/index"),
+                PathBuf::from("/a/node_modules/x/index.js"),
+                PathBuf::from("/a/README.md"),
+                PathBuf::from("/b/other.ts"),
+            ],
+        );
+        assert_eq!(f.get("a").unwrap(), &vec!["src/main.ts".to_string(), "README.md".to_string()]);
+        assert_eq!(f.len(), 1);
     }
 }

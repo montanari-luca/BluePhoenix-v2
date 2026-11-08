@@ -11,6 +11,10 @@ See [Getting started](getting-started.md#add-your-first-project). BluePhoenix re
 
 If nothing useful is found, add commands yourself, or press **Scan with AI** (see [AI features](ai.md)).
 
+### Import many at once
+
+The folder-search button next to **Add project** (or **Import projects from a folder…** in the command palette) looks for git repositories in a folder and its subfolders (2 to 4 levels deep; `node_modules` and build folders are skipped). Tick the ones you want and **Add**: each is set up exactly like a project added on its own, including its `.bluephoenix` file. Repositories that are already projects are shown greyed out.
+
 ### The `.bluephoenix` file
 
 When you add a project that has a folder, BluePhoenix writes a `.bluephoenix` file into it with the project's name, description, type, links, default editor and terminal, and the commands you picked. If you later remove the project and add the folder again (in the app or with `bluephoenix add`), these settings are restored from the file instead of being detected again.

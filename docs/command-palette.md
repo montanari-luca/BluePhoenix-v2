@@ -4,6 +4,8 @@ Press **⌘K** (Mac) or **Ctrl+K** (Windows, Linux), or click the search box in 
 
 ## What you can do
 
+- **Search everything**: type two letters or more and matching to-dos (titles and notes), note pages, commands and files from **all** projects show up under "Found in your projects". Enter opens the to-do list, runs the command, or opens the file in your editor.
+
 - **Jump** to any project, the dashboard, or Settings.
 - When you are inside a project:
   - Fetch, pull, push, stash, apply stash

@@ -1,7 +1,8 @@
-import { Activity as ActivityIcon, ArrowDownToLine, ChevronDown, FolderArchive, FolderPlus, GitBranch, RefreshCw, Search, Sparkles, Star, Upload } from "lucide-react";
+import { Activity as ActivityIcon, ArrowDownToLine, ChevronDown, FolderArchive, FolderPlus, FolderSearch, GitBranch, RefreshCw, Search, Sparkles, Star, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { bulkGit, removeProject } from "../lib/actions";
 import { ActivityPanel } from "../components/ActivityPanel";
+import { ImportDialog } from "../components/ImportDialog";
 import { ProjectCard } from "../components/ProjectCard";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { ProjectDialog } from "../components/ProjectDialog";
@@ -18,6 +19,8 @@ export default function Dashboard() {
   const setAdd = useStore((s) => s.setAddProject);
   const newOpen = useStore((s) => s.newProjectOpen);
   const setNew = useStore((s) => s.setNewProject);
+  const importOpen = useStore((s) => s.importOpen);
+  const setImport = useStore((s) => s.setImport);
   const [editing, setEditing] = useState<Project | null>(null);
   const [filter, setFilter] = useState<"all" | "favorites" | "archived">("all");
   const [query, setQuery] = useState("");
@@ -109,6 +112,9 @@ export default function Dashboard() {
         <button className="btn" onClick={() => setAdd(true)}>
           <FolderPlus size={15} /> Add project
         </button>
+        <button className="btn btn-icon" aria-label="Import projects from a folder" title="Import projects from a folder" onClick={() => setImport(true)}>
+          <FolderSearch size={15} />
+        </button>
         <button className="btn btn-primary" onClick={() => setNew(true)}>
           <Sparkles size={15} /> New project
         </button>
@@ -126,6 +132,9 @@ export default function Dashboard() {
                 </button>
                 <button className="btn" onClick={() => setNew(true)}>
                   <Sparkles size={15} /> Start a new one
+                </button>
+                <button className="btn" onClick={() => setImport(true)}>
+                  <FolderSearch size={15} /> Import a folder of repos
                 </button>
               </div>
             </Empty>
@@ -157,6 +166,7 @@ export default function Dashboard() {
       </div>
 
       <NewProjectDialog open={newOpen} onClose={() => setNew(false)} />
+      <ImportDialog open={importOpen} onClose={() => setImport(false)} />
       <ProjectDialog open={addOpen} onClose={() => setAdd(false)} editing={null} />
       <ProjectDialog open={!!editing} onClose={() => setEditing(null)} editing={editing} />
       {node}

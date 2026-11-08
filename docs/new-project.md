@@ -21,6 +21,12 @@ When it finishes, the project is added to BluePhoenix with its commands (dev ser
 
 Expand **Steps that will run** before you create to see every command.
 
+## Your own templates
+
+When a setup is the way you like it, press **Save as template…** at the bottom of the wizard. It keeps the steps, extra dependencies and generated files; next time it appears under **My templates** and you only enter a name (the project name, folder and identifier are filled into the saved steps). Git, GitHub and icons are still chosen each time.
+
+Templates sync to your other computers. Use a template's **⋯** menu to **Export** it as a `.json` file for a teammate, and **Import template…** at the top of the wizard to add one. Every step is checked before it runs, the same as the built-in templates.
+
 ## Icons
 
 Choose a PNG, JPEG, WebP, GIF, BMP or ICO image. A square PNG of 1024×1024 or more gives the best result; other shapes are centered on a transparent square. The icons depend on the project type:
