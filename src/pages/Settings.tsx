@@ -309,6 +309,15 @@ function UpdatesSection() {
     }
   }
 
+  async function openInstaller(path: string) {
+    try {
+      await api.installUpdate(path);
+    } catch (e) {
+      setFile(null);
+      toast({ kind: "error", title: "Could not open the installer", detail: errMsg(e) });
+    }
+  }
+
   const pct = progress?.total ? Math.min(100, Math.round((progress.downloaded / progress.total) * 100)) : null;
 
   return (
@@ -350,7 +359,7 @@ function UpdatesSection() {
       {file && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-[var(--fg-muted)]">Downloaded to your Downloads folder.</span>
-          <button className="btn btn-primary" onClick={() => void api.installUpdate(file)}>Open installer</button>
+          <button className="btn btn-primary" onClick={() => void openInstaller(file)}>Open installer</button>
           <button className="btn" onClick={() => void api.quit()}>Quit BluePhoenix</button>
         </div>
       )}
