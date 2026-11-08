@@ -1,7 +1,7 @@
 import { GitFork, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, errMsg } from "../lib/api";
-import { describeInterval, forkLabel, forkTone, INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, splitInterval, toMinutes, type IntervalUnit } from "../lib/fork";
+import { describeInterval, forkCanPull, forkLabel, forkPredictionNotice, forkTone, INTERVAL_PRESETS, MIN_INTERVAL_MINUTES, splitInterval, toMinutes, type IntervalUnit } from "../lib/fork";
 import { timeAgo, toneColor } from "../lib/format";
 import { useStore } from "../lib/store";
 import type { ForkSync, Project } from "../lib/types";
@@ -166,7 +166,8 @@ export function ForkStatusCard({ project: p }: { project: Project }) {
   }
 
   const remote = `${fork.upstreamRemote}/${fork.upstreamBranch || "…"}`;
-  const canPull = fork.status === "safe" && fork.behind > 0;
+  const canPull = forkCanPull(fork);
+  const notice = forkPredictionNotice(fork);
   return (
     <div className="glass flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
       <GitFork size={17} className="shrink-0 text-[var(--fg-muted)]" />
@@ -183,6 +184,11 @@ export function ForkStatusCard({ project: p }: { project: Project }) {
             ? `Checks ${describeInterval(fork.intervalMinutes)}${fork.autoPull ? " and pulls safe changes" : ""}.`
             : "Automatic checks are off. Turn them on in Edit project."}
         </p>
+        {notice && (
+          <p className="mt-1 text-xs" style={{ color: toneColor("warn") }}>
+            {notice} Pull upstream still tries the merge, but only into a clean working tree, and undoes it if it conflicts.
+          </p>
+        )}
       </div>
       <div className="flex gap-2">
         <button className="btn btn-sm" onClick={() => void run(false)} disabled={busy !== null}>
@@ -192,7 +198,7 @@ export function ForkStatusCard({ project: p }: { project: Project }) {
           className="btn btn-sm btn-primary"
           onClick={() => void run(true)}
           disabled={busy !== null || !canPull}
-          title={canPull ? "Merge the new upstream commits" : "Nothing safe to pull"}
+          title={notice && canPull ? "Try the merge; it is undone if it conflicts" : canPull ? "Merge the new upstream commits" : "Nothing safe to pull"}
         >
           {busy === "pull" && <Spinner size={13} />} Pull upstream
         </button>

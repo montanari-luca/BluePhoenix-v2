@@ -54,6 +54,7 @@ export function blankFork(projectId: string): ForkSync {
     behind: 0,
     ahead: 0,
     message: null,
+    oldGit: null,
   };
 }
 
@@ -75,6 +76,16 @@ export function forkTone(status: ForkStatus | null | undefined): "ok" | "info" |
   }
 }
 
+/** Upstream commits that can be pulled: predicted to merge cleanly, or untested on old git (the merge is undone if it fails). */
+export function forkCanPull(f: Pick<ForkSync, "status" | "behind" | "oldGit">): boolean {
+  return f.behind > 0 && (f.status === "safe" || (f.status === "unknown" && !!f.oldGit));
+}
+
+/** Why conflicts were not predicted, when the installed git is too old for it. */
+export function forkPredictionNotice(f: Pick<ForkSync, "status" | "oldGit">): string | null {
+  return f.status === "unknown" && f.oldGit ? `Conflict prediction needs git 2.38+ (you have ${f.oldGit}).` : null;
+}
+
 export function forkLabel(f: Pick<ForkSync, "status" | "behind">): string {
   switch (f.status) {
     case "up-to-date":
@@ -86,7 +97,7 @@ export function forkLabel(f: Pick<ForkSync, "status" | "behind">): string {
     case "conflicting":
       return `${f.behind} upstream commit${f.behind === 1 ? "" : "s"} · conflicting`;
     case "unknown":
-      return `${f.behind} upstream commit${f.behind === 1 ? "" : "s"} · not tested`;
+      return `${f.behind} upstream commit${f.behind === 1 ? "" : "s"} · conflicts not tested`;
     case "error":
       return "Upstream check failed";
     default:
