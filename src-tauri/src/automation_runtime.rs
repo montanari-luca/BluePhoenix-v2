@@ -11,7 +11,7 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::automations::{self, RunOpts, RunSummary};
 use crate::db::{list_projects, now, Db};
-use crate::error::Result;
+use crate::error::{LockExt, Result};
 
 const LAUNCH_DELAY: Duration = Duration::from_secs(5);
 const TICK: Duration = Duration::from_secs(60);
@@ -73,7 +73,7 @@ fn announce_upcoming(app: &AppHandle) {
         if due == i64::MIN || due <= t || t < due - mins * 60_000 {
             continue;
         }
-        if state.announced.lock().unwrap().insert((a.id.clone(), due)) {
+        if state.announced.lock_ok().insert((a.id.clone(), due)) {
             let left = ((due - t) as f64 / 60_000.0).ceil() as i64;
             notify(app, &a.name, &format!("Runs in {left} min."));
         }

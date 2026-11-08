@@ -16,7 +16,7 @@ import {
   validateAutomation,
 } from "../lib/automations";
 import { formatDateTime } from "../lib/format";
-import { useStore } from "../lib/store";
+import { useStore, logError } from "../lib/store";
 import type { Automation, AutomationRun, AutomationTrigger } from "../lib/types";
 import { ProjectMultiSelect } from "./ProjectMultiSelect";
 import { Field, Modal, Segmented, Spinner } from "./ui";
@@ -54,7 +54,7 @@ export function AutomationDialog({
     setStep(!editing && startWithTemplates ? "choose" : "details");
     setSaving(false);
     setRuns([]);
-    if (editing) api.automationRuns(editing.id).then(setRuns).catch(() => undefined);
+    if (editing) api.automationRuns(editing.id).then(setRuns).catch(logError("load automation runs"));
   }, [open, editing, startWithTemplates]);
 
   const set = (patch: Partial<Automation>) => setForm((f) => ({ ...f, ...patch }));

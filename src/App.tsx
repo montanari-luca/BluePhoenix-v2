@@ -7,7 +7,7 @@ import { Toasts } from "./components/ui";
 import { api } from "./lib/api";
 import type { AutomationSummary, ForkSync } from "./lib/types";
 import { setNavigator } from "./lib/actions";
-import { useStore } from "./lib/store";
+import { useStore, logError } from "./lib/store";
 import Automations from "./pages/Automations";
 import Dashboard from "./pages/Dashboard";
 import ProjectPage from "./pages/ProjectPage";
@@ -66,7 +66,7 @@ function Shell() {
       api
         .checkUpdate()
         .then((r) => r.available && setUpdate({ latest: r.latest, downloadUrl: r.downloadUrl }))
-        .catch(() => undefined);
+        .catch(logError("update check"));
     });
   }, [init, setUpdate]);
 

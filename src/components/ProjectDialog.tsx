@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, errMsg, uid } from "../lib/api";
 import { scanCommands } from "../lib/ai";
 import { goToProject } from "./projectMenu";
-import { useStore } from "../lib/store";
+import { useStore, logError, reportError } from "../lib/store";
 import { blankFork } from "../lib/fork";
 import type { Detected, DetectedCommand, ForkSync, Project } from "../lib/types";
 import { ForkSettings } from "./ForkSync";
@@ -63,7 +63,7 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
           setFork(f);
           setWasFork(f.isFork);
         })
-        .catch(() => undefined);
+        .catch(logError("load fork settings"));
       return () => {
         stale = true;
       };
@@ -94,7 +94,7 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
     try {
       const d: Detected = await api.detect(dir);
       // A .bluephoenix file left by an earlier add takes precedence over detection.
-      const saved = await api.projectFileRead(dir).catch(() => null);
+      const saved = await api.projectFileRead(dir).catch(logError("read .bluephoenix file", null));
       if (saved) {
         setForm({
           name: saved.name,
@@ -195,7 +195,7 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
           });
         }
         if (saved.path) {
-          void api.indexFiles(saved.id, saved.path).catch(() => undefined);
+          void api.indexFiles(saved.id, saved.path).catch(reportError("Could not index the project files"));
           // Kept in the folder so removing and re-adding the project restores these settings.
           void api
             .projectFileWrite(saved.path, {
@@ -208,7 +208,7 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
               defaultTerminal: saved.defaultTerminal,
               commands: chosen.map((c) => ({ label: c.label, command: c.command, cwd: c.cwd ?? null, source: c.source })),
             })
-            .catch(() => undefined);
+            .catch(reportError("Could not write the .bluephoenix file"));
         }
       }
       if (fork.isFork || wasFork) {
@@ -219,7 +219,7 @@ export function ProjectDialog({ open: isOpen, onClose, editing }: { open: boolea
           void api
             .checkFork(saved.id, false)
             .then((r) => useStore.getState().setForks([r]))
-            .catch(() => undefined);
+            .catch(logError("first upstream check"));
         }
       }
       await loadProjects();

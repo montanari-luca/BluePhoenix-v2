@@ -6,7 +6,7 @@ use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::error::Result;
+use crate::error::{LockExt, Result};
 
 pub struct Db(pub Mutex<Connection>);
 
@@ -220,7 +220,7 @@ pub async fn projects_list(db: State<'_, Db>) -> Result<Vec<ProjectSummary>> {
 }
 
 pub fn list_projects(db: &Db) -> Result<Vec<ProjectSummary>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare(
         "SELECT p.*,
           COALESCE((SELECT SUM(minutes) FROM time_entries t WHERE t.project_id=p.id AND t.deleted=0),0) AS total_minutes,
@@ -253,7 +253,7 @@ pub async fn project_save(db: State<'_, Db>, project: Project) -> Result<Project
 }
 
 pub fn save_project(db: &Db, project: Project) -> Result<Project> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let t = now();
     conn.execute(
         "INSERT INTO projects(id,name,description,path,kind,favorite,github_url,website_url,default_editor,
@@ -273,7 +273,7 @@ pub fn save_project(db: &Db, project: Project) -> Result<Project> {
 
 #[tauri::command]
 pub async fn project_touch(db: State<'_, Db>, id: String) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     // Local-only bookkeeping: does not mark the row dirty for sync.
     conn.execute("UPDATE projects SET last_opened=?1 WHERE id=?2", params![now(), id])?;
     Ok(())
@@ -281,7 +281,7 @@ pub async fn project_touch(db: State<'_, Db>, id: String) -> Result<()> {
 
 #[tauri::command]
 pub async fn project_remove(db: State<'_, Db>, id: String) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let t = now();
     for table in ["projects", "commands", "todo_pages", "todos", "time_entries"] {
         let col = if table == "projects" { "id" } else { "project_id" };
@@ -299,7 +299,7 @@ pub async fn project_remove(db: State<'_, Db>, id: String) -> Result<()> {
 
 #[tauri::command]
 pub async fn commands_list(db: State<'_, Db>, project_id: String) -> Result<Vec<Command>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare(
         "SELECT id,project_id,label,command,cwd,source,sort FROM commands
          WHERE project_id=?1 AND deleted=0 ORDER BY sort, label COLLATE NOCASE",
@@ -326,7 +326,7 @@ pub async fn command_save(db: State<'_, Db>, command: Command) -> Result<()> {
 }
 
 pub fn save_command(db: &Db, command: &Command) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute(
         "INSERT INTO commands(id,project_id,label,command,cwd,source,sort,updated_at,deleted,dirty)
          VALUES(?1,?2,?3,?4,?5,?6,?7,?8,0,1)
@@ -338,7 +338,7 @@ pub fn save_command(db: &Db, command: &Command) -> Result<()> {
 
 #[tauri::command]
 pub async fn command_delete(db: State<'_, Db>, id: String) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute("UPDATE commands SET deleted=1,dirty=1,updated_at=?1 WHERE id=?2", params![now(), id])?;
     Ok(())
 }
@@ -347,7 +347,7 @@ pub async fn command_delete(db: State<'_, Db>, id: String) -> Result<()> {
 
 #[tauri::command]
 pub async fn pages_list(db: State<'_, Db>, project_id: String) -> Result<Vec<TodoPage>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare(
         "SELECT id,project_id,title,markdown,sort FROM todo_pages WHERE project_id=?1 AND deleted=0 ORDER BY sort, title COLLATE NOCASE",
     )?;
@@ -361,7 +361,7 @@ pub async fn pages_list(db: State<'_, Db>, project_id: String) -> Result<Vec<Tod
 
 #[tauri::command]
 pub async fn page_save(db: State<'_, Db>, page: TodoPage) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute(
         "INSERT INTO todo_pages(id,project_id,title,markdown,sort,updated_at,deleted,dirty)
          VALUES(?1,?2,?3,?4,?5,?6,0,1)
@@ -373,7 +373,7 @@ pub async fn page_save(db: State<'_, Db>, page: TodoPage) -> Result<()> {
 
 #[tauri::command]
 pub async fn page_delete(db: State<'_, Db>, id: String) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let t = now();
     conn.execute("UPDATE todo_pages SET deleted=1,dirty=1,updated_at=?1 WHERE id=?2", params![t, id])?;
     // To-dos of a deleted page fall back to the General list.
@@ -402,7 +402,7 @@ fn todo_from_row(r: &Row) -> rusqlite::Result<Todo> {
 
 #[tauri::command]
 pub async fn todos_list(db: State<'_, Db>, project_id: String) -> Result<Vec<Todo>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare(
         "SELECT * FROM todos WHERE project_id=?1 AND deleted=0 ORDER BY (status='done'), sort, created_at",
     )?;
@@ -426,14 +426,14 @@ fn upsert_todo(conn: &Connection, todo: &Todo) -> rusqlite::Result<()> {
 
 #[tauri::command]
 pub async fn todo_save(db: State<'_, Db>, todo: Todo) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     upsert_todo(&conn, &todo)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn todos_save_many(db: State<'_, Db>, todos: Vec<Todo>) -> Result<()> {
-    let mut conn = db.0.lock().unwrap();
+    let mut conn = db.0.lock_ok();
     let tx = conn.transaction()?;
     for t in &todos {
         upsert_todo(&tx, t)?;
@@ -444,7 +444,7 @@ pub async fn todos_save_many(db: State<'_, Db>, todos: Vec<Todo>) -> Result<()> 
 
 #[tauri::command]
 pub async fn todo_delete(db: State<'_, Db>, id: String) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute("UPDATE todos SET deleted=1,dirty=1,updated_at=?1 WHERE id=?2", params![now(), id])?;
     Ok(())
 }
@@ -453,7 +453,7 @@ pub async fn todo_delete(db: State<'_, Db>, id: String) -> Result<()> {
 
 #[tauri::command]
 pub async fn time_list(db: State<'_, Db>, project_id: String) -> Result<Vec<TimeEntry>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare(
         "SELECT id,project_id,todo_id,minutes,logged_at,note FROM time_entries
          WHERE project_id=?1 AND deleted=0 ORDER BY logged_at DESC",
@@ -475,7 +475,7 @@ pub async fn time_list(db: State<'_, Db>, project_id: String) -> Result<Vec<Time
 
 #[tauri::command]
 pub async fn time_save(db: State<'_, Db>, entry: TimeEntry) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute(
         "INSERT INTO time_entries(id,project_id,todo_id,minutes,logged_at,note,updated_at,deleted,dirty)
          VALUES(?1,?2,?3,?4,?5,?6,?7,0,1)
@@ -487,7 +487,7 @@ pub async fn time_save(db: State<'_, Db>, entry: TimeEntry) -> Result<()> {
 
 #[tauri::command]
 pub async fn time_delete(db: State<'_, Db>, id: String) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute("UPDATE time_entries SET deleted=1,dirty=1,updated_at=?1 WHERE id=?2", params![now(), id])?;
     Ok(())
 }
@@ -496,7 +496,7 @@ pub async fn time_delete(db: State<'_, Db>, id: String) -> Result<()> {
 
 #[tauri::command]
 pub async fn settings_get_all(db: State<'_, Db>) -> Result<HashMap<String, String>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let mut stmt = conn.prepare("SELECT key,value FROM settings")?;
     let map = stmt
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
@@ -510,7 +510,7 @@ pub async fn settings_set(db: State<'_, Db>, key: String, value: String) -> Resu
 }
 
 pub fn set_setting(db: &Db, key: &str, value: &str) -> Result<()> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute(
         "INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=?2",
         params![key, value],
@@ -519,6 +519,6 @@ pub fn set_setting(db: &Db, key: &str, value: &str) -> Result<()> {
 }
 
 pub fn setting(db: &Db, key: &str) -> Option<String> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.query_row("SELECT value FROM settings WHERE key=?1", params![key], |r| r.get(0)).ok()
 }

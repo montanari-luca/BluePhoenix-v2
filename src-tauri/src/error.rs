@@ -39,3 +39,38 @@ impl From<&str> for AppError {
         AppError::Msg(s.to_string())
     }
 }
+
+/// Lock a std `Mutex` without panicking when a previous holder panicked.
+///
+/// A poisoned lock only means another thread panicked while holding it. The data we guard (a SQLite
+/// connection, PTY handles, maps of running jobs) stays usable: rusqlite rolls back an open
+/// transaction when it is dropped. So we take the guard back instead of taking the whole app down.
+pub trait LockExt<T> {
+    fn lock_ok(&self) -> std::sync::MutexGuard<'_, T>;
+}
+
+impl<T> LockExt<T> for std::sync::Mutex<T> {
+    fn lock_ok(&self) -> std::sync::MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LockExt;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn lock_ok_recovers_a_poisoned_mutex() {
+        let m = Arc::new(Mutex::new(1));
+        let m2 = m.clone();
+        let _ = std::thread::spawn(move || {
+            let _g = m2.lock().unwrap();
+            panic!("poison it");
+        })
+        .join();
+        assert!(m.is_poisoned());
+        *m.lock_ok() += 1;
+        assert_eq!(*m.lock_ok(), 2);
+    }
+}

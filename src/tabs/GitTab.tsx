@@ -4,7 +4,7 @@ import { generateCommitMessage } from "../lib/ai";
 import { gitAction } from "../lib/actions";
 import { api, errMsg } from "../lib/api";
 import { formatDateTime, timeAgo } from "../lib/format";
-import { useStore } from "../lib/store";
+import { useStore, logError } from "../lib/store";
 import type { Branch, Change, Commit, Project } from "../lib/types";
 import { ForkStatusCard } from "../components/ForkSync";
 import { Dropdown, Empty, Modal, Segmented, Spinner, useConfirm } from "../components/ui";
@@ -57,8 +57,8 @@ export default function GitTab({ project: p }: { project: Project }) {
       setBranches(b);
       setLog(l);
       setStashes(s);
-    } catch {
-      /* not a repo yet */
+    } catch (e) {
+      logError("load branches, history and stashes")(e); // usually: not a repo yet
     }
   }, [p.path, logLimit]);
 

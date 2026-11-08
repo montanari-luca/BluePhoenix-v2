@@ -50,6 +50,23 @@ interface State {
 
 let toastId = 1;
 
+/** Log a failure that the UI can live without (a badge, a count, a background refresh). */
+export function logError<T = undefined>(context: string, fallback?: T) {
+  return (e: unknown): T => {
+    console.warn(`[BluePhoenix] ${context}: ${errMsg(e)}`);
+    return fallback as T;
+  };
+}
+
+/** Tell the user about a failure they would otherwise not notice, and log it. */
+export function reportError<T = undefined>(title: string, fallback?: T) {
+  return (e: unknown): T => {
+    console.error(`[BluePhoenix] ${title}: ${errMsg(e)}`);
+    useStore.getState().toast({ kind: "error", title, detail: errMsg(e) });
+    return fallback as T;
+  };
+}
+
 export const useStore = create<State>((set, get) => ({
   ready: false,
   system: null,
@@ -105,7 +122,8 @@ export const useStore = create<State>((set, get) => ({
       const s = await api.gitStatus(p.path);
       set((st) => ({ statuses: { ...st.statuses, [id]: s } }));
       return s;
-    } catch {
+    } catch (e) {
+      logError(`git status for ${p.name}`)(e);
       set((st) => ({ statuses: { ...st.statuses, [id]: null } }));
       return null;
     }
@@ -116,7 +134,7 @@ export const useStore = create<State>((set, get) => ({
   },
 
   loadCommands: async (id) => {
-    const cmds = await api.commands(id).catch(() => [] as Command[]);
+    const cmds = await api.commands(id).catch(reportError("Could not load commands", [] as Command[]));
     set((st) => ({ commands: { ...st.commands, [id]: cmds } }));
     return cmds;
   },
@@ -132,8 +150,8 @@ export const useStore = create<State>((set, get) => ({
   loadForks: async () => {
     try {
       get().setForks(await api.forks());
-    } catch {
-      /* the fork badge is optional */
+    } catch (e) {
+      logError("load forks")(e); // the fork badge is optional
     }
   },
 

@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use tauri::State;
 
 use crate::db::{setting, Db};
-use crate::error::{err, AppError, Result};
+use crate::error::{err, AppError, LockExt, Result};
 
 const SERVICE: &str = "com.astrodev.bluephoenix";
 
@@ -401,7 +401,7 @@ pub struct LlamaState(Mutex<Option<Child>>);
 
 impl Drop for LlamaState {
     fn drop(&mut self) {
-        if let Some(mut c) = self.0.lock().unwrap().take() {
+        if let Some(mut c) = self.0.lock_ok().take() {
             let _ = c.kill();
         }
     }
@@ -416,7 +416,7 @@ pub async fn llama_start(state: State<'_, LlamaState>, gguf_path: String, port: 
         AppError::Msg("llama-server was not found on your PATH. Install llama.cpp (for example `brew install llama.cpp`) or use Ollama / LM Studio.".into())
     })?;
     let port = port.unwrap_or(8080);
-    let mut guard = state.0.lock().unwrap();
+    let mut guard = state.0.lock_ok();
     if let Some(mut old) = guard.take() {
         let _ = old.kill();
     }
@@ -432,7 +432,7 @@ pub async fn llama_start(state: State<'_, LlamaState>, gguf_path: String, port: 
 
 #[tauri::command]
 pub async fn llama_stop(state: State<'_, LlamaState>) -> Result<()> {
-    if let Some(mut c) = state.0.lock().unwrap().take() {
+    if let Some(mut c) = state.0.lock_ok().take() {
         let _ = c.kill();
     }
     Ok(())

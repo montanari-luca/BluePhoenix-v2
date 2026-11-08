@@ -2,7 +2,7 @@ import { Check, ChevronDown, ChevronRight, Copy, FilePlus2, GripVertical, Inbox,
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateTodoPrompt, prioritizeTodos } from "../lib/ai";
 import { api, errMsg, uid } from "../lib/api";
-import { useStore } from "../lib/store";
+import { useStore, logError } from "../lib/store";
 import type { Project, Todo, TodoPage, TodoStatus } from "../lib/types";
 import { MarkdownEditor } from "../components/Markdown";
 import { Dropdown, Empty, Modal, Segmented, Spinner, useConfirm } from "../components/ui";
@@ -95,7 +95,7 @@ function TodoDetail({ todo, project, onChange, onClose }: { todo: Todo; project:
               onClick={async () => {
                 setBusy(true);
                 try {
-                  const ctx = project.path ? await api.snapshot(project.path).catch(() => "") : "";
+                  const ctx = project.path ? await api.snapshot(project.path).catch(logError("project snapshot", "")) : "";
                   const out = await generateTodoPrompt(project, { ...todo, notes }, ctx);
                   setPrompt(out);
                   onChange({ ...todo, notes, aiPrompt: out });

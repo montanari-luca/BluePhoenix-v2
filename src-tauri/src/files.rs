@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::db::Db;
-use crate::error::{err, Result};
+use crate::error::{err, LockExt, Result};
 
 const MAX_FILES: usize = 100_000;
 
@@ -70,7 +70,7 @@ pub fn scan_files(root: &Path) -> (Vec<FileEntry>, bool) {
 }
 
 pub fn store_files(db: &Db, project_id: &str, entries: &[FileEntry]) -> Result<()> {
-    let mut conn = db.0.lock().unwrap();
+    let mut conn = db.0.lock_ok();
     let tx = conn.transaction()?;
     tx.execute("DELETE FROM files WHERE project_id=?1", params![project_id])?;
     {
@@ -90,7 +90,7 @@ pub async fn files_list(
     query: Option<String>,
     limit: Option<i64>,
 ) -> Result<Vec<FileEntry>> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let q = format!("%{}%", query.unwrap_or_default().replace('%', "\\%").replace('_', "\\_"));
     let mut stmt = conn.prepare(
         "SELECT rel_path,size,mtime FROM files WHERE project_id=?1 AND rel_path LIKE ?2 ESCAPE '\\'
@@ -106,6 +106,6 @@ pub async fn files_list(
 
 #[tauri::command]
 pub async fn files_count(db: State<'_, Db>, project_id: String) -> Result<i64> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     Ok(conn.query_row("SELECT COUNT(*) FROM files WHERE project_id=?1", params![project_id], |r| r.get(0))?)
 }

@@ -3,7 +3,7 @@ import { CloudOff, Database, Link2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, errMsg } from "../lib/api";
 import { timeAgo } from "../lib/format";
-import { useStore } from "../lib/store";
+import { useStore, logError } from "../lib/store";
 import type { SyncStatus } from "../lib/types";
 import { Field, Pill, Segmented, Spinner } from "./ui";
 
@@ -22,7 +22,7 @@ export function SyncSection() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState<"test" | "connect" | "sync" | null>(null);
 
-  const refresh = useCallback(() => api.syncStatus().then(setStatus).catch(() => undefined), []);
+  const refresh = useCallback(() => api.syncStatus().then(setStatus).catch(logError("sync status")), []);
 
   useEffect(() => {
     void refresh();

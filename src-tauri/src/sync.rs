@@ -21,7 +21,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::ai::{secret_get, secret_set};
 use crate::db::{now, Db};
-use crate::error::{err, AppError, Result};
+use crate::error::{err, AppError, LockExt, Result};
 
 pub const URL_SECRET: &str = "sync:db_url";
 
@@ -314,7 +314,7 @@ fn updated_at_idx(t: &Table) -> usize {
 
 async fn push_table(client: &Client, db: &Db, t: &Table) -> Result<usize> {
     let rows = {
-        let conn = db.0.lock().unwrap();
+        let conn = db.0.lock_ok();
         read_local(&conn, t)?
     };
     if rows.is_empty() {
@@ -331,7 +331,7 @@ async fn push_table(client: &Client, db: &Db, t: &Table) -> Result<usize> {
     }
     // Mark clean only rows that were not edited again while we were uploading.
     let ua = updated_at_idx(t);
-    let mut conn = db.0.lock().unwrap();
+    let mut conn = db.0.lock_ok();
     let tx = conn.transaction()?;
     for row in &rows {
         if let (V::T(Some(id)), V::I(Some(u))) = (&row[0], &row[ua]) {
@@ -347,12 +347,12 @@ fn cursor_key(t: &Table) -> String {
 }
 
 fn get_state(db: &Db, key: &str) -> Option<String> {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.query_row("SELECT value FROM sync_state WHERE key=?1", [key], |r| r.get(0)).ok()
 }
 
 fn set_state(db: &Db, key: &str, value: &str) {
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     let _ = conn.execute(
         "INSERT INTO sync_state(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=?2",
         rusqlite::params![key, value],
@@ -385,7 +385,7 @@ async fn pull_table(client: &Client, db: &Db, t: &Table) -> Result<usize> {
     let sql = upsert_local_sql(t);
     let mut changed = 0;
     {
-        let mut conn = db.0.lock().unwrap();
+        let mut conn = db.0.lock_ok();
         let tx = conn.transaction()?;
         {
             let mut stmt = tx.prepare(&sql)?;
@@ -473,7 +473,7 @@ pub async fn sync_connect(app: AppHandle, url: String) -> Result<SyncReport> {
     {
         // A (possibly different) database: start from scratch and upload everything.
         let db = app.state::<Db>();
-        let conn = db.0.lock().unwrap();
+        let conn = db.0.lock_ok();
         conn.execute("DELETE FROM sync_state", [])?;
         for t in TABLES {
             conn.execute(&format!("UPDATE {} SET dirty=1", t.name), [])?;
@@ -491,7 +491,7 @@ pub async fn sync_now(app: AppHandle) -> Result<SyncReport> {
 pub async fn sync_disconnect(app: AppHandle) -> Result<()> {
     secret_set(URL_SECRET.into(), String::new()).await?;
     let db: State<Db> = app.state();
-    let conn = db.0.lock().unwrap();
+    let conn = db.0.lock_ok();
     conn.execute("DELETE FROM sync_state", [])?;
     Ok(())
 }
@@ -560,7 +560,7 @@ mod pg_integration {
     }
 
     fn one<T2: rusqlite::types::FromSql>(db: &Db, sql: &str) -> Option<T2> {
-        db.0.lock().unwrap().query_row(sql, [], |r| r.get(0)).ok()
+        db.0.lock_ok().query_row(sql, [], |r| r.get(0)).ok()
     }
 
     /// Needs a throw-away Postgres: BP_TEST_PG=postgresql://user@localhost:5544/postgres cargo test pg_integration
@@ -579,7 +579,7 @@ mod pg_integration {
         let (a, b) = (device("a"), device("b"));
         let t0 = now();
         {
-            let conn = a.0.lock().unwrap();
+            let conn = a.0.lock_ok();
             conn.execute("INSERT INTO projects(id,name,path,kind,created_at,updated_at) VALUES('p1','Alpha','/a','Rust',?1,?1)", params![t0]).unwrap();
             conn.execute("INSERT INTO todos(id,project_id,title,created_at,updated_at) VALUES('t1','p1','First',?1,?1)", params![t0]).unwrap();
             conn.execute("INSERT INTO time_entries(id,project_id,minutes,logged_at,updated_at) VALUES('m1','p1',30,?1,?1)", params![t0]).unwrap();
@@ -597,7 +597,7 @@ mod pg_integration {
 
         // B edits the to-do later than A's version; A must adopt it.
         {
-            let conn = b.0.lock().unwrap();
+            let conn = b.0.lock_ok();
             conn.execute("UPDATE todos SET title='First (edited on B)', status='done', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 5000]).unwrap();
         }
         run_sync(&b, &url).await.unwrap();
@@ -607,8 +607,8 @@ mod pg_integration {
 
         // Conflicting edits: the newer write wins on both devices.
         {
-            a.0.lock().unwrap().execute("UPDATE todos SET title='A wins?', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 9000]).unwrap();
-            b.0.lock().unwrap().execute("UPDATE todos SET title='B is newer', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 20000]).unwrap();
+            a.0.lock_ok().execute("UPDATE todos SET title='A wins?', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 9000]).unwrap();
+            b.0.lock_ok().execute("UPDATE todos SET title='B is newer', updated_at=?1, dirty=1 WHERE id='t1'", params![t0 + 20000]).unwrap();
         }
         run_sync(&a, &url).await.unwrap();
         run_sync(&b, &url).await.unwrap();
@@ -618,7 +618,7 @@ mod pg_integration {
 
         // Deleting on A propagates as a tombstone.
         {
-            a.0.lock().unwrap().execute("UPDATE time_entries SET deleted=1, dirty=1, updated_at=?1 WHERE id='m1'", params![t0 + 30000]).unwrap();
+            a.0.lock_ok().execute("UPDATE time_entries SET deleted=1, dirty=1, updated_at=?1 WHERE id='m1'", params![t0 + 30000]).unwrap();
         }
         run_sync(&a, &url).await.unwrap();
         run_sync(&b, &url).await.unwrap();

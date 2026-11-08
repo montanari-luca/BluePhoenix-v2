@@ -4,7 +4,7 @@ import { generateChangelog, generatePrDescription, summarizeChanges } from "../l
 import { hasFolder } from "../lib/actions";
 import { api, errMsg } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { useStore } from "../lib/store";
+import { useStore, logError, reportError } from "../lib/store";
 import type { Commit, Project } from "../lib/types";
 import { MarkdownView } from "../components/Markdown";
 import { Empty, Spinner } from "../components/ui";
@@ -22,13 +22,13 @@ export default function ChangelogTab({ project: p }: { project: Project }) {
     try {
       if (range.startsWith("last:")) setCommits(await api.gitLog(p.path, Number(range.slice(5))));
       else setCommits(await api.gitLog(p.path, 500, `${range.slice(6)}..HEAD`));
-    } catch {
-      setCommits([]);
+    } catch (e) {
+      setCommits(reportError("Could not read the git history", [])(e));
     }
   }, [p.path, range]);
 
   useEffect(() => {
-    if (hasFolder(p)) api.gitTags(p.path).then(setTags).catch(() => undefined);
+    if (hasFolder(p)) api.gitTags(p.path).then(setTags).catch(logError("load tags"));
   }, [p]);
   useEffect(() => {
     if (hasFolder(p)) void load();
@@ -75,7 +75,7 @@ export default function ChangelogTab({ project: p }: { project: Project }) {
           <button
             className="btn"
             disabled={!!busy || commits.length === 0}
-            onClick={() => void run("PR description", async () => generatePrDescription(p, commits, await api.gitDiff(p.path, false).then((d) => d.split("\n").filter((l) => l.startsWith("diff --git")).join("\n")).catch(() => "")))}
+            onClick={() => void run("PR description", async () => generatePrDescription(p, commits, await api.gitDiff(p.path, false).then((d) => d.split("\n").filter((l) => l.startsWith("diff --git")).join("\n")).catch(logError("diff for PR description", ""))))}
           >
             {busy === "PR description" ? <Spinner size={14} /> : <Sparkles size={14} />} Write PR description
           </button>

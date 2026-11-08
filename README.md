@@ -9,7 +9,7 @@
 A beautiful project manager for developers (and anyone with projects to track).<br/>
 See each project's real git state, run builds, jump into any editor, keep to-dos and time, and let AI do the boring parts.
 
-![Version](https://img.shields.io/badge/version-0.2.0-4f8cff?style=flat-square)
+![Version](https://img.shields.io/badge/version-0.2.2-4f8cff?style=flat-square)
 ![Platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20iPhone-8b5cf6?style=flat-square)
 ![Built with](https://img.shields.io/badge/built%20with-Tauri%20%C2%B7%20Rust%20%C2%B7%20React%20%C2%B7%20SwiftUI-f97316?style=flat-square)
 
@@ -127,7 +127,7 @@ scripts/     Dev and installer scripts
 
 **How it works in brief:** local data lives in SQLite. Git is the `git` CLI. Sync pushes and pulls rows to PostgreSQL with last-write-wins on `updated_at` and deletion tombstones, using a server-side timestamp for pulling (`src-tauri/src/sync.rs`; the iPhone app implements the same rules). AI providers speak the OpenAI-compatible API or Anthropic's.
 
-**Releasing:** set the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` and `ios/project.yml`, build, upload the installers, then update `bluephoenix-v.json` (`{"latest": "x.y.z"}`) and `bluephoenix-d.json` (download links per platform) in the MintFlow-Releases repository. The app reads those two files to offer updates.
+**Releasing:** run `scripts/bump-version.sh x.y.z` (sets the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `ios/project.yml` and the badge above), build, upload the installers, then update `bluephoenix-v.json` (`{"latest": "x.y.z"}`) and `bluephoenix-d.json` (download links per platform) in the MintFlow-Releases repository. The app reads those two files to offer updates.
 
 ---
 

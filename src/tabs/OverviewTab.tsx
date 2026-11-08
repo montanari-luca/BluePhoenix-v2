@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { gitAction, hasFolder } from "../lib/actions";
 import { api } from "../lib/api";
 import { branchState, formatDateTime, formatMinutes, timeAgo, toneColor } from "../lib/format";
-import { useStore } from "../lib/store";
+import { useStore, logError } from "../lib/store";
 import type { Commit, ProjectSummary, TimeEntry } from "../lib/types";
 import { Pill, Spinner } from "../components/ui";
 
@@ -29,12 +29,12 @@ export default function OverviewTab({ project: p }: { project: ProjectSummary })
   const state = branchState(status);
 
   useEffect(() => {
-    api.time(p.id).then((t) => setTime(t.slice(0, 5))).catch(() => undefined);
-    api.filesCount(p.id).then(setFiles).catch(() => undefined);
+    api.time(p.id).then((t) => setTime(t.slice(0, 5))).catch(logError("load time"));
+    api.filesCount(p.id).then(setFiles).catch(logError("count files"));
   }, [p.id, p.totalMinutes]);
 
   useEffect(() => {
-    if (folder && status?.isRepo) api.gitLog(p.path, 6).then(setCommits).catch(() => setCommits([]));
+    if (folder && status?.isRepo) api.gitLog(p.path, 6).then(setCommits).catch((e) => setCommits(logError("recent commits", [])(e)));
   }, [p.path, folder, status?.isRepo, status?.head]);
 
   const act = (a: Parameters<typeof gitAction>[1]) => () => void gitAction(p, a);

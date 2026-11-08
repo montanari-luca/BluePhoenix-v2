@@ -7,7 +7,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::error::Result;
+use crate::error::{LockExt, Result};
 
 pub struct PtySession {
     writer: Mutex<Box<dyn Write + Send>>,
@@ -77,7 +77,7 @@ pub async fn pty_open(
         master: Mutex::new(pair.master),
         child: Mutex::new(child),
     });
-    state.0.lock().unwrap().insert(id.clone(), session);
+    state.0.lock_ok().insert(id.clone(), session);
 
     let app2 = app.clone();
     let id2 = id.clone();
@@ -98,13 +98,13 @@ pub async fn pty_open(
 }
 
 fn get(state: &State<'_, PtyState>, id: &str) -> Result<Arc<PtySession>> {
-    state.0.lock().unwrap().get(id).cloned().ok_or_else(|| "Terminal session not found".into())
+    state.0.lock_ok().get(id).cloned().ok_or_else(|| "Terminal session not found".into())
 }
 
 #[tauri::command]
 pub async fn pty_write(state: State<'_, PtyState>, id: String, data: String) -> Result<()> {
     let s = get(&state, &id)?;
-    let mut w = s.writer.lock().unwrap();
+    let mut w = s.writer.lock_ok();
     w.write_all(data.as_bytes())?;
     w.flush()?;
     Ok(())
@@ -113,15 +113,15 @@ pub async fn pty_write(state: State<'_, PtyState>, id: String, data: String) -> 
 #[tauri::command]
 pub async fn pty_resize(state: State<'_, PtyState>, id: String, cols: u16, rows: u16) -> Result<()> {
     let s = get(&state, &id)?;
-    s.master.lock().unwrap().resize(size(cols, rows)).map_err(|e| e.to_string())?;
+    s.master.lock_ok().resize(size(cols, rows)).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn pty_close(state: State<'_, PtyState>, id: String) -> Result<()> {
-    let removed = state.0.lock().unwrap().remove(&id);
+    let removed = state.0.lock_ok().remove(&id);
     if let Some(s) = removed {
-        let _ = s.child.lock().unwrap().kill();
+        let _ = s.child.lock_ok().kill();
     }
     Ok(())
 }
