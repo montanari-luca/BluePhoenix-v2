@@ -2,6 +2,7 @@ import { api, errMsg, uid } from "./api";
 import { useStore } from "./store";
 import { openSession } from "./terminals";
 import type { Command, Project } from "./types";
+import { pool } from "./pool";
 
 let navigator: (to: string) => void = () => undefined;
 export const setNavigator = (fn: (to: string) => void) => (navigator = fn);
@@ -107,6 +108,52 @@ export async function gitAction(p: Project, action: GitAction): Promise<boolean>
     setBusy(p.id, undefined);
     void refreshStatus(p.id);
   }
+}
+
+export type BulkAction = "fetch" | "pull";
+
+/**
+ * Fetch every project, or fast-forward every project that has no local changes, four at a time,
+ * with one summary toast instead of one per project.
+ */
+export async function bulkGit(projects: Project[], action: BulkAction) {
+  const { statuses, setBusy, refreshStatus } = useStore.getState();
+  const targets = projects.filter((p) => {
+    if (!hasFolder(p) || p.archivedAt) return false;
+    const s = statuses[p.id];
+    if (!s?.isRepo) return false;
+    return action === "fetch" || (s.changes.length === 0 && !!s.upstream);
+  });
+  if (targets.length === 0) {
+    toast({ kind: "info", title: action === "fetch" ? "No git projects to fetch" : "Nothing to pull", detail: action === "pull" ? "Only projects without local changes and with an upstream branch are pulled." : undefined });
+    return;
+  }
+  const failed: string[] = [];
+  let changed = 0;
+  await pool(targets, 4, async (p) => {
+    setBusy(p.id, action === "fetch" ? "Fetching" : "Pulling");
+    try {
+      const out = await (action === "fetch" ? api.gitFetch(p.path) : api.gitPullFf(p.path));
+      if (action === "pull" && !/already up to date/i.test(out)) changed++;
+    } catch (e) {
+      failed.push(`${p.name}: ${errMsg(e).split("\n")[0]}`);
+    } finally {
+      setBusy(p.id, undefined);
+      void refreshStatus(p.id);
+    }
+  });
+  const done = targets.length - failed.length;
+  const title =
+    action === "fetch"
+      ? `Fetched ${done} project${done === 1 ? "" : "s"}`
+      : changed
+        ? `Pulled new commits into ${changed} project${changed === 1 ? "" : "s"}`
+        : "Everything was already up to date";
+  toast({
+    kind: failed.length ? "error" : "success",
+    title: failed.length ? `${title}, ${failed.length} failed` : title,
+    detail: failed.length ? failed.slice(0, 4).join("\n") : undefined,
+  });
 }
 
 export function openExternal(url: string | null | undefined) {

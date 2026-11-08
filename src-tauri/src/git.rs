@@ -385,6 +385,12 @@ pub async fn git_pull(path: String) -> Result<String> {
     act(&path, &["pull"], 180).await
 }
 
+/// Pull that never creates a merge commit: fails instead when the branches have diverged.
+#[tauri::command]
+pub async fn git_pull_ff(path: String) -> Result<String> {
+    act(&path, &["pull", "--ff-only"], 180).await
+}
+
 #[tauri::command]
 pub async fn git_push(path: String) -> Result<String> {
     let has_upstream =

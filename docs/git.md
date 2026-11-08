@@ -43,6 +43,14 @@ The latest commits. Click one to see its full change. **Load more** goes further
 
 Create a stash or apply the latest one, and see the full stash list.
 
+## Pull requests and CI
+
+With the GitHub CLI (`gh`) installed and signed in, the Git tab of a project on GitHub shows its open pull requests (draft, review status, "your review" when you are asked) and the latest CI run on the current branch. Click a pull request to open it on GitHub; the refresh button checks again right away.
+
+## Worktrees
+
+**Git tab → Worktrees** lists every checkout of the repository. **New worktree** checks out a new or existing branch into its own folder (by default next to the project, named `<project>-<branch>`), so you can, for example, fix a bug on `main` without stashing your half-done feature. Each worktree has buttons to open it in your editor or terminal, reveal it, or remove it (the branch is kept; you are asked before discarding uncommitted changes).
+
 ## GitHub forks
 
 Fork settings (the upstream address, branch and auto-check options) sync to your other computers; each computer keeps its own check results.

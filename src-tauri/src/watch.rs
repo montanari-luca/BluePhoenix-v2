@@ -111,6 +111,7 @@ fn start(app: &AppHandle) -> Result<Inner> {
         let ids = projects_for(&r.lock_ok(), events.into_iter().map(|e| e.path));
         if !ids.is_empty() {
             crate::git_share::changed(&handle, &ids);
+            crate::activity::changed(&handle, &ids);
             let _ = handle.emit("git-changed", ids);
         }
     })

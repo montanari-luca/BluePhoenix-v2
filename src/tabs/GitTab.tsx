@@ -7,10 +7,12 @@ import { formatDateTime, timeAgo } from "../lib/format";
 import { useStore, logError } from "../lib/store";
 import type { Branch, Change, Commit, Project } from "../lib/types";
 import { ForkStatusCard } from "../components/ForkSync";
+import { PullRequestsCard } from "../components/PullRequests";
+import { WorktreesView } from "../components/Worktrees";
 import { Dropdown, Empty, Modal, Segmented, Spinner, useConfirm } from "../components/ui";
 import { useGitChanged } from "../lib/gitEvents";
 
-type View = "changes" | "branches" | "history" | "stashes";
+type View = "changes" | "branches" | "history" | "stashes" | "worktrees";
 
 function DiffText({ text }: { text: string }) {
   return (
@@ -126,6 +128,7 @@ export default function GitTab({ project: p }: { project: Project }) {
   return (
     <div className="flex flex-col gap-4">
       <ForkStatusCard project={p} />
+      <PullRequestsCard project={p} />
       <div className="flex flex-wrap items-center gap-3">
         <Segmented
           value={view}
@@ -135,6 +138,7 @@ export default function GitTab({ project: p }: { project: Project }) {
             { value: "branches", label: "Branches" },
             { value: "history", label: "History" },
             { value: "stashes", label: `Stashes${stashes.length ? ` (${stashes.length})` : ""}` },
+            { value: "worktrees", label: "Worktrees" },
           ]}
         />
         {working && (
@@ -341,6 +345,8 @@ export default function GitTab({ project: p }: { project: Project }) {
           )}
         </div>
       )}
+
+      {view === "worktrees" && <WorktreesView project={p} />}
 
       <Modal open={!!diff} onClose={() => setDiff(null)} title={diff?.title ?? ""} width={900}>
         {diff && <DiffText text={diff.text} />}

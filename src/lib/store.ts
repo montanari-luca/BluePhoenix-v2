@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { api, errMsg } from "./api";
 import { pool } from "./pool";
 import { applyTheme } from "./theme";
-import type { AppInfo, Automation, Command, ForkSync, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
+import type { AppInfo, Automation, Command, ForkSync, GithubStatus, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
 
 export interface Toast {
   id: number;
@@ -21,6 +21,8 @@ interface State {
   automations: Automation[];
   /** Forks only, by project id. */
   forks: Record<string, ForkSync>;
+  /** Pull requests and CI by project id, from `gh` (only projects on GitHub). */
+  github: Record<string, GithubStatus>;
   editors: AppInfo[];
   terminals: AppInfo[];
   toasts: Toast[];
@@ -40,6 +42,7 @@ interface State {
   loadAutomations: () => Promise<void>;
   loadForks: () => Promise<void>;
   setForks: (list: ForkSync[]) => void;
+  setGithub: (list: GithubStatus[]) => void;
   setSetting: (key: string, value: string) => Promise<void>;
   toast: (t: Omit<Toast, "id">) => void;
   dismissToast: (id: number) => void;
@@ -93,6 +96,7 @@ export const useStore = create<State>((set, get) => ({
   commands: {},
   automations: [],
   forks: {},
+  github: {},
   editors: [],
   terminals: [],
   toasts: [],
@@ -116,6 +120,7 @@ export const useStore = create<State>((set, get) => ({
       applyTheme(settings.theme ?? "system", settings.accent);
       await get().loadProjects();
       void get().loadForks();
+      void api.githubCached().then(get().setGithub).catch(logError("load GitHub status"));
     } catch (e) {
       get().toast({ kind: "error", title: "Could not start BluePhoenix", detail: errMsg(e) });
     } finally {
@@ -206,6 +211,13 @@ export const useStore = create<State>((set, get) => ({
         else delete forks[f.projectId];
       }
       return { forks };
+    }),
+
+  setGithub: (list) =>
+    set((st) => {
+      const github = { ...st.github };
+      for (const g of list) github[g.projectId] = g;
+      return { github };
     }),
 
   setSetting: async (key, value) => {

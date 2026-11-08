@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Step } from "./initializer";
 import type {
+  Activity,
+  GithubStatus,
+  Worktree,
   AppInfo,
   BackupFile,
   ImportReport,
@@ -39,6 +42,15 @@ export const api = {
   systemInfo: () => invoke<SystemInfo>("system_info"),
   /** Re-syncs the backend `.git` watchers with the project list. */
   gitWatchSync: () => invoke<void>("git_watch_sync"),
+  gitPullFf: (path: string) => invoke<string>("git_pull_ff", { path }),
+  gitWorktrees: (path: string) => invoke<Worktree[]>("git_worktrees", { path }),
+  gitWorktreeAdd: (path: string, dir: string, branch: string, create: boolean) =>
+    invoke<string>("git_worktree_add", { path, dir, branch, create }),
+  gitWorktreeRemove: (path: string, dir: string, force: boolean) => invoke<void>("git_worktree_remove", { path, dir, force }),
+  activityFeed: (opts: { limit?: number; before?: number; kinds?: string[] } = {}) =>
+    invoke<Activity[]>("activity_feed", { limit: opts.limit ?? null, before: opts.before ?? null, kinds: opts.kinds ?? null }),
+  githubStatus: (projectId: string, refresh = false) => invoke<GithubStatus>("github_status", { projectId, refresh }),
+  githubCached: () => invoke<GithubStatus[]>("github_cached"),
 
   // data
   projects: () => invoke<ProjectSummary[]>("projects_list"),

@@ -112,6 +112,16 @@ CREATE TABLE project_git(
 );
 "#;
 
+// Phase 4: the activity feed (commits and fork events; local only).
+const MIGRATION_5: &str = r#"
+CREATE TABLE activity(
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
+  detail TEXT, tone TEXT, ts INTEGER NOT NULL
+);
+CREATE INDEX idx_activity_ts ON activity(ts);
+CREATE TABLE activity_scan(project_id TEXT PRIMARY KEY, last_scan INTEGER NOT NULL);
+"#;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -133,6 +143,9 @@ impl Db {
         if version < 4 {
             // DDL is transactional in SQLite: a half-applied migration never sticks.
             conn.execute_batch(&format!("BEGIN;{MIGRATION_4}PRAGMA user_version = 4;COMMIT;"))?;
+        }
+        if version < 5 {
+            conn.execute_batch(&format!("BEGIN;{MIGRATION_5}PRAGMA user_version = 5;COMMIT;"))?;
         }
         Ok(Db(Mutex::new(conn)))
     }
@@ -328,6 +341,8 @@ pub async fn project_remove(db: State<'_, Db>, id: String) -> Result<()> {
         )?;
     }
     conn.execute("DELETE FROM files WHERE project_id=?1", params![id])?;
+    conn.execute("DELETE FROM activity WHERE project_id=?1", params![id])?;
+    conn.execute("DELETE FROM activity_scan WHERE project_id=?1", params![id])?;
     // Fork settings sync now, so remove them with a tombstone instead of deleting the row.
     conn.execute("UPDATE fork_sync SET is_fork=0, deleted=1, dirty=1, updated_at=?1 WHERE project_id=?2", params![t, id])?;
     conn.execute("UPDATE project_git SET deleted=1, dirty=1, updated_at=?1 WHERE project_id=?2", params![t, id])?;
@@ -599,7 +614,7 @@ mod migration_tests {
         let db = Db::open(&path).unwrap();
         let c = db.0.lock_ok();
         let v: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
-        assert_eq!(v, 4);
+        assert_eq!(v, 5);
         let (id, dirty, updated, status): (String, i64, i64, String) = c
             .query_row("SELECT id,dirty,updated_at,status FROM fork_sync WHERE project_id='p'", [], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))

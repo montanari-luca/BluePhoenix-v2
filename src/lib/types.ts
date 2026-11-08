@@ -327,3 +327,55 @@ export interface ImportReport {
   changed: number;
   unchanged: number;
 }
+
+export interface Worktree {
+  path: string;
+  head: string | null;
+  branch: string | null;
+  detached: boolean;
+  bare: boolean;
+  locked: boolean;
+  prunable: boolean;
+  main: boolean;
+}
+
+export interface Activity {
+  id: string;
+  projectId: string;
+  projectName: string;
+  kind: "commit" | "fork" | "automation" | "todo";
+  title: string;
+  detail: string | null;
+  tone: "ok" | "failed" | "warn" | null;
+  ts: number;
+}
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  url: string;
+  isDraft: boolean;
+  reviewDecision: string | null;
+  headRefName: string;
+  author: { login: string } | null;
+  updatedAt: string;
+}
+
+export interface CiRun {
+  status: string;
+  conclusion: string;
+  workflowName: string;
+  url: string;
+  headBranch: string;
+}
+
+export interface GithubStatus {
+  projectId: string;
+  available: boolean;
+  reason: "no-gh" | "no-remote" | "signed-out" | "error" | null;
+  message: string | null;
+  pulls: PullRequest[];
+  reviewRequested: number[];
+  ci: CiRun | null;
+  checkedAt: number;
+}

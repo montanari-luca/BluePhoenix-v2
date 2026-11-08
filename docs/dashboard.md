@@ -30,6 +30,22 @@ The dashboard lists all your projects as cards. Starred projects and recently op
 
 Click anywhere else on the card to open the full project page.
 
+## Git for all projects
+
+The **Git** menu next to the search box works on every (non-archived) project at once, four at a time, with one summary at the end:
+
+- **Fetch all** downloads new commits from every remote.
+- **Pull all clean projects** fast-forwards projects that have no local changes and an upstream branch. It never creates merge commits; a project whose branch has diverged is reported and left alone.
+- **Only show unpushed** filters the dashboard to projects with commits you have not pushed yet.
+
+## Pull requests and CI
+
+If the [GitHub CLI](https://cli.github.com) (`gh`) is installed and signed in (`gh auth login`), cards of projects on GitHub show the number of open pull requests, how many wait for your review, and whether the latest CI run on the current branch passed. Click the CI label to open the run. This refreshes every five minutes; nothing is sent to BluePhoenix servers.
+
+## Activity
+
+The **activity** button (next to the Git menu) opens a timeline of what happened across your projects: commits, automation runs, fork updates and completed to-dos, grouped by day. Filter by kind, and click an entry to jump to the project. Commits are picked up as you make them (from any terminal or editor); the first time, the last seven days are filled in. Activity stays on this computer and is kept for 90 days.
+
 ## Archived projects
 
 The filter next to the search box shows **Archived** once you have archived something. Archived cards look the same; restore one with **⋯ → Restore from archive**. See [Projects](projects.md#archive-a-project).

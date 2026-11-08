@@ -1,10 +1,11 @@
-import { FolderArchive, FolderPlus, Search, Sparkles, Star } from "lucide-react";
+import { Activity as ActivityIcon, ArrowDownToLine, ChevronDown, FolderArchive, FolderPlus, GitBranch, RefreshCw, Search, Sparkles, Star, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { removeProject } from "../lib/actions";
+import { bulkGit, removeProject } from "../lib/actions";
+import { ActivityPanel } from "../components/ActivityPanel";
 import { ProjectCard } from "../components/ProjectCard";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { ProjectDialog } from "../components/ProjectDialog";
-import { Empty, Segmented, useConfirm } from "../components/ui";
+import { Dropdown, Empty, Segmented, useConfirm } from "../components/ui";
 import { Logo } from "../components/TitleBar";
 import { useStore } from "../lib/store";
 import type { Project } from "../lib/types";
@@ -20,6 +21,18 @@ export default function Dashboard() {
   const [editing, setEditing] = useState<Project | null>(null);
   const [filter, setFilter] = useState<"all" | "favorites" | "archived">("all");
   const [query, setQuery] = useState("");
+  const [unpushedOnly, setUnpushedOnly] = useState(false);
+  const [showActivity, setShowActivity] = useState(() => localStorage.getItem("bp.activityOpen") === "1");
+  const statuses = useStore((s) => s.statuses);
+  const toggleActivity = () =>
+    setShowActivity((v) => {
+      try {
+        localStorage.setItem("bp.activityOpen", v ? "0" : "1");
+      } catch {
+        /* storage unavailable: the panel just won't be remembered */
+      }
+      return !v;
+    });
   const { confirm, node } = useConfirm();
 
   useEffect(() => {
@@ -39,9 +52,10 @@ export default function Dashboard() {
     return projects.filter(
       (p) =>
         (filter === "archived" ? !!p.archivedAt : !p.archivedAt && (filter === "all" || p.favorite)) &&
+        (!unpushedOnly || (statuses[p.id]?.ahead ?? 0) > 0) &&
         (!q || p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || p.kind.toLowerCase().includes(q)),
     );
-  }, [projects, filter, query]);
+  }, [projects, filter, query, unpushedOnly, statuses]);
 
   const active = useMemo(() => projects.filter((p) => !p.archivedAt), [projects]);
   const archivedCount = projects.length - active.length;
@@ -76,6 +90,22 @@ export default function Dashboard() {
             ...(archivedCount || filter === "archived" ? [{ value: "archived" as const, label: "Archived" }] : []),
           ]}
         />
+        <Dropdown
+          items={[
+            { label: "All projects", header: true },
+            { label: "Fetch all", icon: <RefreshCw size={15} />, onClick: () => void bulkGit(active, "fetch") },
+            { label: "Pull all clean projects", icon: <ArrowDownToLine size={15} />, onClick: () => void bulkGit(active, "pull") },
+            { separator: true },
+            { label: "Only show unpushed", icon: <Upload size={15} />, checked: unpushedOnly, onClick: () => setUnpushedOnly((v) => !v) },
+          ]}
+        >
+          <button className={`btn ${unpushedOnly ? "btn-primary" : ""}`} title="Git for all projects">
+            <GitBranch size={15} /> Git <ChevronDown size={13} />
+          </button>
+        </Dropdown>
+        <button className={`btn btn-icon ${showActivity ? "btn-primary" : ""}`} aria-label="Activity" title="Activity" onClick={toggleActivity}>
+          <ActivityIcon size={15} />
+        </button>
         <button className="btn" onClick={() => setAdd(true)}>
           <FolderPlus size={15} /> Add project
         </button>
@@ -84,7 +114,8 @@ export default function Dashboard() {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+      <div className="flex min-h-0 flex-1 gap-4 px-6 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {projects.length === 0 ? (
           <div className="glass mx-auto mt-10 max-w-xl">
             <Empty icon={<Logo size={54} />} title="Welcome to BluePhoenix">
@@ -99,6 +130,10 @@ export default function Dashboard() {
               </div>
             </Empty>
           </div>
+        ) : shown.length === 0 && unpushedOnly ? (
+          <Empty icon={<Upload size={32} />} title="Nothing to push">
+            Every project is pushed. <button className="text-[var(--accent)] hover:underline" onClick={() => setUnpushedOnly(false)}>Show all</button>
+          </Empty>
         ) : shown.length === 0 ? (
           <Empty
             icon={filter === "favorites" ? <Star size={32} /> : filter === "archived" ? <FolderArchive size={32} /> : <Search size={32} />}
@@ -117,6 +152,8 @@ export default function Dashboard() {
             ))}
           </div>
         )}
+      </div>
+      {showActivity && <ActivityPanel onClose={toggleActivity} />}
       </div>
 
       <NewProjectDialog open={newOpen} onClose={() => setNew(false)} />

@@ -1,3 +1,4 @@
+mod activity;
 mod ai;
 mod automation_runtime;
 mod automations;
@@ -11,6 +12,7 @@ mod files;
 mod fork_sync;
 mod git;
 mod git_share;
+mod github;
 mod icons;
 mod initializer;
 mod launch;
@@ -20,6 +22,7 @@ mod scheduler;
 mod sync;
 mod updater;
 mod watch;
+mod worktree;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -117,6 +120,7 @@ pub fn run() {
         .manage(fork_sync::ForkState::default())
         .manage(initializer::InitState::default())
         .manage(watch::GitWatch::default())
+        .manage(github::GithubCache::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -124,7 +128,7 @@ pub fn run() {
             app.manage(db);
             build_main_window(app)?;
             // Every periodic job runs on one scheduler loop.
-            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs(), git_share::jobs(), backup::jobs()].into_iter().flatten().collect());
+            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs(), git_share::jobs(), backup::jobs(), activity::jobs(), github::jobs()].into_iter().flatten().collect());
             {
                 // Installs / repairs the `bluephoenix` terminal command in the background.
                 let handle = app.handle().clone();
@@ -146,6 +150,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             system_info,
             watch::git_watch_sync,
+            activity::activity_feed,
+            github::github_status,
+            github::github_cached,
+            git::git_pull_ff,
+            worktree::git_worktrees,
+            worktree::git_worktree_add,
+            worktree::git_worktree_remove,
             // data
             db::projects_list,
             db::project_save,

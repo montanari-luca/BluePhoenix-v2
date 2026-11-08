@@ -49,6 +49,9 @@ A project manager for developers: a Tauri v2 desktop app (macOS, Windows, Linux)
 - Archived projects (`archived_at`) are skipped by background work: use `db::active_projects`, not `list_projects`, for anything that runs on its own.
 - `backup.rs`: JSON/SQLite export, merge-import (never overwrites newer rows, marks imports dirty), daily `VACUUM INTO` snapshots in `<app data>/backups` (keeps 7). New tables worth keeping go in its `TABLES` list.
 - `git_share.rs` writes a `project_git` row per project (only when it changed and sync is connected) for the iPhone's read-only Git tab.
+- `activity.rs`: the dashboard feed. Commits and fork events go in the local `activity` table (commits found by scanning since the last scan, triggered by the watcher). Automation runs and done to-dos are read straight from their tables in one UNION query.
+- `github.rs` talks to GitHub only through the user's `gh` CLI (no tokens in the app), caches 5 min, and emits `github-status`. A missing `gh`, a sign-out or a non-GitHub remote come back as `available: false` with a `reason`, never as errors.
+- `worktree.rs`: `git worktree` list/add/remove (the main worktree is protected). New git features that don't touch the status or log code go in their own module rather than growing `git.rs`.
 - Postgres integration tests: `BP_TEST_PG=postgresql://user@localhost:5544/postgres?sslmode=disable cargo test pg_integration -- --test-threads=1`.
 - Git always goes through the system `git` CLI, so the user's credentials and SSH keys work. Fork conflict prediction needs git 2.38 or newer, for `merge-tree --write-tree`.
 - Secrets (AI keys, the database URL) live in the OS keychain through `keyring`, never in SQLite.

@@ -376,6 +376,15 @@ async fn run_due(app: &AppHandle) {
         let Ok(after) = check_project(&db, &before.project_id, None).await else { continue };
         // Only speak up when something is new: a different status or more upstream commits.
         let news = after.status != before.status || after.behind > before.behind;
+        if news && matches!(after.status.as_deref(), Some("pulled" | "safe" | "conflicting")) {
+            let (title, tone) = match after.status.as_deref() {
+                Some("pulled") => ("Pulled upstream changes", "ok"),
+                Some("safe") => ("Upstream has new commits", "ok"),
+                _ => ("Upstream changes conflict", "warn"),
+            };
+            let id = format!("fork:{}:{}", after.project_id, after.last_check.unwrap_or(t));
+            let _ = crate::activity::record(&db, &id, &after.project_id, "fork", title, after.message.as_deref(), Some(tone), after.last_check.unwrap_or(t));
+        }
         if news {
             match after.status.as_deref() {
                 Some("pulled") => notify(app, &name, after.message.as_deref().unwrap_or("Pulled upstream changes.")),

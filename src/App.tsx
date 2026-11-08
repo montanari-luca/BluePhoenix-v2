@@ -5,7 +5,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { TitleBar } from "./components/TitleBar";
 import { Toasts } from "./components/ui";
 import { api } from "./lib/api";
-import type { AutomationSummary, ForkSync } from "./lib/types";
+import type { AutomationSummary, ForkSync, GithubStatus } from "./lib/types";
 import { setNavigator } from "./lib/actions";
 import { useStore, logError } from "./lib/store";
 import Automations from "./pages/Automations";
@@ -59,6 +59,12 @@ function Shell() {
       const { refreshStatus } = useStore.getState();
       for (const id of e.payload) void refreshStatus(id);
     });
+    return () => void un.then((f) => f());
+  }, []);
+
+  // Pull requests and CI refresh in the background every few minutes.
+  useEffect(() => {
+    const un = listen<GithubStatus[]>("github-status", (e) => useStore.getState().setGithub(e.payload));
     return () => void un.then((f) => f());
   }, []);
 

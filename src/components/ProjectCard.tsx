@@ -6,6 +6,7 @@ import { branchState, formatMinutes, timeAgo, toneColor } from "../lib/format";
 import { setCardVisible, useStore } from "../lib/store";
 import type { ProjectSummary } from "../lib/types";
 import { buildEditorMenu, buildProjectMenu, goToProject } from "./projectMenu";
+import { GithubBadges } from "./PullRequests";
 import { Dropdown, type MenuItem, Pill, Spinner, SplitButton } from "./ui";
 
 export function ProjectCard({ project: p, onRemove, onEdit }: { project: ProjectSummary; onRemove: () => void; onEdit: () => void }) {
@@ -13,6 +14,7 @@ export function ProjectCard({ project: p, onRemove, onEdit }: { project: Project
   const cmds = useStore((s) => s.commands[p.id]);
   const busy = useStore((s) => s.busy[p.id]);
   const fork = useStore((s) => s.forks[p.id]);
+  const github = useStore((s) => s.github[p.id]);
   const settings = useStore((s) => s.settings);
   const editors = useStore((s) => s.editors);
   const loadCommands = useStore((s) => s.loadCommands);
@@ -130,6 +132,7 @@ export function ProjectCard({ project: p, onRemove, onEdit }: { project: Project
             {p.doneTodos > 0 && <span className="text-[var(--fg-faint)]"> · {p.doneTodos} done</span>}
           </span>
         </li>
+        <GithubBadges status={github} />
         {fork?.isFork && (
           <li className="flex items-center gap-2" title={fork.message ?? undefined}>
             <GitFork size={14} />
