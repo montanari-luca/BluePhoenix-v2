@@ -112,6 +112,10 @@ export interface Commit {
   ts: number;
   subject: string;
   body: string;
+  /** Full hashes of the parent commits (empty for a root commit). */
+  parents: string[];
+  /** Ref decorations, e.g. "HEAD -> main", "origin/main", "tag: v1.0". */
+  refs: string[];
 }
 
 export interface AppInfo {

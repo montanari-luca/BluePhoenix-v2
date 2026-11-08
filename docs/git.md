@@ -37,7 +37,11 @@ Open a project and choose **Git**.
 
 ### History
 
-The latest commits. Click one to see its full change. **Load more** goes further back.
+The latest commits, newest first. Click one to see its full change. **Load more** goes further back.
+
+- A **graph** on the left shows how commits connect. Each branch gets its own colour and column; a line splits off where a branch started and joins back where it was merged. Merge commits have a hollow dot.
+- Labels next to a commit show the branches and tags pointing at it: your checked-out branch in bold, other local branches in the accent colour, remote branches (like `origin/main`) muted, and tags in amber.
+- Only the loaded commits are drawn, so a branch whose start is further back keeps running off the bottom of the list until you **Load more**.
 
 ### Stashes
 

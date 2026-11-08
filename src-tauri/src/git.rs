@@ -313,13 +313,44 @@ pub struct Commit {
     pub ts: i64,
     pub subject: String,
     pub body: String,
+    /// Full hashes of the parent commits (empty for a root commit).
+    pub parents: Vec<String>,
+    /// Ref decorations pointing at this commit, as git prints them
+    /// (e.g. `HEAD -> main`, `origin/main`, `tag: v1.0`).
+    pub refs: Vec<String>,
+}
+
+const LOG_FORMAT: &str = "--format=%H%x1f%h%x1f%an%x1f%ct%x1f%P%x1f%D%x1f%s%x1f%b%x1e";
+
+/// Parses the output of `git log` run with [`LOG_FORMAT`].
+pub fn parse_log(text: &str) -> Vec<Commit> {
+    text.split('\x1e')
+        .filter_map(|rec| {
+            let rec = rec.trim_start_matches('\n');
+            let p: Vec<&str> = rec.splitn(8, '\x1f').collect();
+            if p.len() < 7 {
+                return None;
+            }
+            Some(Commit {
+                hash: p[0].to_string(),
+                short: p[1].to_string(),
+                author: p[2].to_string(),
+                ts: p[3].parse::<i64>().unwrap_or(0) * 1000,
+                parents: p[4].split_whitespace().map(str::to_string).collect(),
+                refs: p[5].split(", ").map(str::trim).filter(|r| !r.is_empty()).map(str::to_string).collect(),
+                subject: p[6].to_string(),
+                body: p.get(7).unwrap_or(&"").trim().to_string(),
+            })
+        })
+        .collect()
 }
 
 #[tauri::command]
 pub async fn git_log(path: String, limit: Option<u32>, range: Option<String>) -> Result<Vec<Commit>> {
     let n = limit.unwrap_or(50).to_string();
-    let mut args: Vec<&str> =
-        vec!["log", "-n", &n, "--format=%H%x1f%h%x1f%an%x1f%ct%x1f%s%x1f%b%x1e"];
+    // --date-order guarantees children are listed before their parents,
+    // which the history graph relies on.
+    let mut args: Vec<&str> = vec!["log", "--date-order", "-n", &n, LOG_FORMAT];
     let range_s;
     if let Some(r) = range.as_ref().filter(|r| !r.trim().is_empty()) {
         range_s = r.clone();
@@ -333,24 +364,7 @@ pub async fn git_log(path: String, limit: Option<u32>, range: Option<String>) ->
         }
         return err(first_nonempty(&o.stderr, &o.stdout));
     }
-    Ok(o.stdout
-        .split('\x1e')
-        .filter_map(|rec| {
-            let rec = rec.trim_start_matches('\n');
-            let p: Vec<&str> = rec.splitn(6, '\x1f').collect();
-            if p.len() < 5 {
-                return None;
-            }
-            Some(Commit {
-                hash: p[0].to_string(),
-                short: p[1].to_string(),
-                author: p[2].to_string(),
-                ts: p[3].parse::<i64>().unwrap_or(0) * 1000,
-                subject: p[4].to_string(),
-                body: p.get(5).unwrap_or(&"").trim().to_string(),
-            })
-        })
-        .collect())
+    Ok(parse_log(&o.stdout))
 }
 
 #[tauri::command]
@@ -518,5 +532,19 @@ mod tests {
         let s = parse_status("# branch.oid (initial)\n# branch.head main\n");
         assert_eq!(s.state, "no-upstream");
         assert!(s.head.is_none());
+    }
+
+    #[test]
+    fn parses_log_parents_and_refs() {
+        let out = "aaa\x1fa\x1fAnn\x1f10\x1fbbb ccc\x1fHEAD -> main, origin/main, tag: v1\x1fMerge\x1f\x1e\n\
+                   bbb\x1fb\x1fBo\x1f5\x1f\x1f\x1fRoot\x1fline1\nline2\n\x1e\n";
+        let c = parse_log(out);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0].parents, vec!["bbb", "ccc"]);
+        assert_eq!(c[0].refs, vec!["HEAD -> main", "origin/main", "tag: v1"]);
+        assert_eq!(c[0].ts, 10_000);
+        assert_eq!(c[0].subject, "Merge");
+        assert!(c[1].parents.is_empty() && c[1].refs.is_empty());
+        assert_eq!(c[1].body, "line1\nline2");
     }
 }
