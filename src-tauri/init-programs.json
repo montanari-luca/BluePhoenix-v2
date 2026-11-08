@@ -1,0 +1,29 @@
+{
+  "$comment": "Programs a New Project plan (or a saved custom template) may run in a `run` step. Checked by validate_plan in src/initializer.rs; src/lib/initializer.programs.test.ts checks every built-in template against it.",
+  "programs": [
+    "npm",
+    "npx",
+    "pnpm",
+    "yarn",
+    "bun",
+    "bunx",
+    "deno",
+    "cargo",
+    "rustup",
+    "git",
+    "gh",
+    "python",
+    "python3",
+    "pip",
+    "pip3",
+    "uv",
+    "poetry",
+    "flutter",
+    "dart",
+    "dotnet",
+    "go",
+    "swift",
+    "xcodegen",
+    "pod"
+  ]
+}

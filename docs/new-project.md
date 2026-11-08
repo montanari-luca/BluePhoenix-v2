@@ -43,6 +43,8 @@ Choose a PNG, JPEG, WebP, GIF, BMP or ICO image. A square PNG of 1024×1024 or m
 
 The wizard uses the tools of the type you pick and tells you when one is missing: Node.js with your package manager, Rust (`cargo`), `uv` for Python, Go, Flutter, or [XcodeGen](https://github.com/yonaskolb/XcodeGen) for SwiftUI (`brew install xcodegen`). Scaffolders that download templates (such as `create-tauri-app`) need an internet connection.
 
+Before anything runs, BluePhoenix checks the whole setup: it only starts known developer tools (package managers, `cargo`, `git`, `gh`, `uv`, `go`, `flutter`, `xcodegen` and similar, listed in `src-tauri/init-programs.json`), found on your PATH, and only inside the new project folder or the folder it is created in. A setup that asks for anything else is refused without running any step.
+
 ## If a step fails
 
 The log shows what went wrong. Choose **Retry from this step**, go **Back to settings**, or **Add folder as a project** to keep what was created. A failed commit (for example when git has no name and email configured) or a missing icon location only produces a warning; the project is still created.
