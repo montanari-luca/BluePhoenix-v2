@@ -8,6 +8,7 @@ import { useStore, logError } from "../lib/store";
 import type { Branch, Change, Commit, Project } from "../lib/types";
 import { ForkStatusCard } from "../components/ForkSync";
 import { Dropdown, Empty, Modal, Segmented, Spinner, useConfirm } from "../components/ui";
+import { useGitChanged } from "../lib/gitEvents";
 
 type View = "changes" | "branches" | "history" | "stashes";
 
@@ -66,6 +67,7 @@ export default function GitTab({ project: p }: { project: Project }) {
     void refreshStatus(p.id);
     void loadLists();
   }, [p.id, refreshStatus, loadLists]);
+  useGitChanged(p.id, () => void loadLists());
 
   async function act<T>(label: string, fn: () => Promise<T>, success?: string): Promise<T | undefined> {
     setWorking(label);

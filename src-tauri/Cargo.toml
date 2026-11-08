@@ -46,6 +46,7 @@ tokio-postgres-rustls = "0.14.0"
 webpki-roots = "1.0.9"
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "ico"] }
+notify-debouncer-mini = "0.7.0"
 
 
 [target.'cfg(windows)'.dependencies]

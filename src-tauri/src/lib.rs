@@ -14,8 +14,10 @@ mod initializer;
 mod launch;
 mod project_file;
 mod pty;
+mod scheduler;
 mod sync;
 mod updater;
+mod watch;
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -112,15 +114,15 @@ pub fn run() {
         .manage(automation_runtime::AutomationState::default())
         .manage(fork_sync::ForkState::default())
         .manage(initializer::InitState::default())
+        .manage(watch::GitWatch::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let db = db::Db::open(&dir.join("bluephoenix.db"))?;
             app.manage(db);
             build_main_window(app)?;
-            sync::start_background(app.handle().clone());
-            automation_runtime::start_background(app.handle().clone());
-            fork_sync::start_background(app.handle().clone());
+            // Every periodic job runs on one scheduler loop.
+            scheduler::start(app.handle().clone(), [automation_runtime::jobs(), sync::jobs(), fork_sync::jobs(), watch::jobs()].into_iter().flatten().collect());
             {
                 // Installs / repairs the `bluephoenix` terminal command in the background.
                 let handle = app.handle().clone();
@@ -141,6 +143,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             system_info,
+            watch::git_watch_sync,
             // data
             db::projects_list,
             db::project_save,

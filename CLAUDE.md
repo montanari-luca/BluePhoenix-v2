@@ -41,7 +41,9 @@ A project manager for developers: a Tauri v2 desktop app (macOS, Windows, Linux)
 - **Errors**:
   - Rust commands return `Result` and never panic on user input. Lock mutexes with `.lock_ok()` from `error::LockExt`, not `.lock().unwrap()`.
   - In the UI, never write an empty `catch`. Use `reportError(title)` when the user should know, which shows a toast and logs. Use `logError(context, fallback)` for best-effort calls such as badges, counts and background refreshes.
-- Background loops start in `lib.rs` `setup` (`sync`, `automation_runtime` and `fork_sync`, each with `start_background`).
+- Periodic work runs on the single loop in `scheduler.rs`. Each subsystem exposes `jobs() -> Vec<Job>` (`Job::every` / `Job::once`), registered in `lib.rs` `setup`. Never spawn your own `loop { sleep }`.
+- `watch.rs` watches each project's `.git` dir and `refs/` and emits `git-changed` with project ids. The store refreshes those cards, and `useGitChanged` (`src/lib/gitEvents.ts`) lets a view react. `git status` runs with `--no-optional-locks` so a refresh never rewrites the index and re-triggers the watcher.
+- `refreshAllStatuses` runs at most 4 `git status` at a time, on-screen cards first (`setCardVisible`).
 - Git always goes through the system `git` CLI, so the user's credentials and SSH keys work. Fork conflict prediction needs git 2.38 or newer, for `merge-tree --write-tree`.
 - Secrets (AI keys, the database URL) live in the OS keychain through `keyring`, never in SQLite.
 - UI text is plain and friendly. Colours come from CSS variables (`var(--fg-muted)`, `var(--accent)`, `var(--line)` and so on) so both themes work.

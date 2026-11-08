@@ -15,6 +15,7 @@ use tauri_plugin_notification::NotificationExt;
 use crate::db::{list_projects, now, Db};
 use crate::error::{err, Result};
 use crate::git::exec;
+use crate::scheduler::Job;
 
 const MINUTE_MS: i64 = 60_000;
 const MIN_INTERVAL_MINUTES: i64 = 15;
@@ -388,15 +389,9 @@ async fn run_due(app: &AppHandle) {
     }
 }
 
-/// Starts the scheduler: a check shortly after launch, then every minute for whatever has become due.
-pub fn start_background(app: AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(LAUNCH_DELAY).await;
-        loop {
-            run_due(&app).await;
-            tokio::time::sleep(TICK).await;
-        }
-    });
+/// For the shared scheduler: a check shortly after launch, then every minute for whatever has become due.
+pub fn jobs() -> Vec<Job> {
+    vec![Job::every("fork sync", LAUNCH_DELAY, TICK, |app| async move { run_due(&app).await })]
 }
 
 #[cfg(test)]

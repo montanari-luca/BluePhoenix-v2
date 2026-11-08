@@ -53,6 +53,15 @@ function Shell() {
     return () => void un.then((f) => f());
   }, []);
 
+  // The backend watches each project's .git folder and reports which projects changed.
+  useEffect(() => {
+    const un = listen<string[]>("git-changed", (e) => {
+      const { refreshStatus } = useStore.getState();
+      for (const id of e.payload) void refreshStatus(id);
+    });
+    return () => void un.then((f) => f());
+  }, []);
+
   // `bluephoenix add` writes to the same database from a terminal; pick that up when the window regains focus.
   useEffect(() => {
     const onFocus = () => void useStore.getState().loadProjects();

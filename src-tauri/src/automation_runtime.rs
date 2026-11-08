@@ -12,6 +12,7 @@ use tauri_plugin_notification::NotificationExt;
 use crate::automations::{self, RunOpts, RunSummary};
 use crate::db::{list_projects, now, Db};
 use crate::error::{LockExt, Result};
+use crate::scheduler::Job;
 
 const LAUNCH_DELAY: Duration = Duration::from_secs(5);
 const TICK: Duration = Duration::from_secs(60);
@@ -80,21 +81,17 @@ fn announce_upcoming(app: &AppHandle) {
     }
 }
 
-/// Starts the launch run and the scheduler loop.
-pub fn start_background(app: AppHandle) {
-    let launch = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(LAUNCH_DELAY).await;
-        run_trigger_and_report(&launch, "launch", None, None).await;
-    });
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(LAUNCH_DELAY).await;
-        loop {
+/// The launch run and the schedule tick, for the shared scheduler.
+pub fn jobs() -> Vec<Job> {
+    vec![
+        Job::once("automations: launch", LAUNCH_DELAY, |app| async move {
+            run_trigger_and_report(&app, "launch", None, None).await;
+        }),
+        Job::every("automations: schedule", LAUNCH_DELAY, TICK, |app| async move {
             run_trigger_and_report(&app, "schedule", None, None).await;
             announce_upcoming(&app);
-            tokio::time::sleep(TICK).await;
-        }
-    });
+        }),
+    ]
 }
 
 /// Called after a commit made through BluePhoenix succeeded in `path`.

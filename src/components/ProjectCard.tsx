@@ -1,9 +1,9 @@
 import { CalendarClock, Clock, Code2, EllipsisVertical, GitBranch, GitFork, ListTodo, Play, Star } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { defaultCommand, defaultEditorId, editorName, hasFolder, openEditor, runCommand, toggleFavorite } from "../lib/actions";
 import { forkLabel, forkTone } from "../lib/fork";
 import { branchState, formatMinutes, timeAgo, toneColor } from "../lib/format";
-import { useStore } from "../lib/store";
+import { setCardVisible, useStore } from "../lib/store";
 import type { ProjectSummary } from "../lib/types";
 import { buildEditorMenu, buildProjectMenu, goToProject } from "./projectMenu";
 import { Dropdown, type MenuItem, Pill, Spinner, SplitButton } from "./ui";
@@ -21,6 +21,19 @@ export function ProjectCard({ project: p, onRemove, onEdit }: { project: Project
   useEffect(() => {
     if (!cmds) void loadCommands(p.id);
   }, [p.id, cmds, loadCommands]);
+
+  // Cards on screen get their git status refreshed first.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setCardVisible(p.id, e.isIntersecting));
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      setCardVisible(p.id, false);
+    };
+  }, [p.id]);
 
   const folder = hasFolder(p);
   const state = branchState(status);
@@ -49,6 +62,7 @@ export function ProjectCard({ project: p, onRemove, onEdit }: { project: Project
 
   return (
     <div
+      ref={cardRef}
       className="glass group relative flex cursor-pointer flex-col transition-transform hover:-translate-y-0.5"
       onClick={() => goToProject(p.id)}
       role="link"

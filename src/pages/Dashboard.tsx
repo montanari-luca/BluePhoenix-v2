@@ -23,9 +23,11 @@ export default function Dashboard() {
   const { confirm, node } = useConfirm();
 
   useEffect(() => {
-    const onFocus = () => void refreshAll();
+    // `.git` watchers push most changes (see App.tsx); focus covers edits to working files, and the
+    // interval is a safety net for anything a watcher missed.
+    const onFocus = () => void refreshAll({ ifOlderThan: 5_000 });
     window.addEventListener("focus", onFocus);
-    const t = setInterval(onFocus, 60_000);
+    const t = setInterval(() => void refreshAll(), 5 * 60_000);
     return () => {
       window.removeEventListener("focus", onFocus);
       clearInterval(t);

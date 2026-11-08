@@ -22,6 +22,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 use crate::ai::{secret_get, secret_set};
 use crate::db::{now, Db};
 use crate::error::{err, AppError, LockExt, Result};
+use crate::scheduler::Job;
 
 pub const URL_SECRET: &str = "sync:db_url";
 
@@ -444,16 +445,13 @@ async fn sync_and_notify(app: &AppHandle) -> Result<SyncReport> {
     res
 }
 
-pub fn start_background(app: AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(4)).await;
-        loop {
-            if secret_get(URL_SECRET).is_some() {
-                let _ = sync_and_notify(&app).await;
-            }
-            tokio::time::sleep(Duration::from_secs(60)).await;
+/// For the shared scheduler: sync every minute while a database is connected.
+pub fn jobs() -> Vec<Job> {
+    vec![Job::every("cloud sync", Duration::from_secs(4), Duration::from_secs(60), |app| async move {
+        if secret_get(URL_SECRET).is_some() {
+            let _ = sync_and_notify(&app).await;
         }
-    });
+    })]
 }
 
 #[tauri::command]

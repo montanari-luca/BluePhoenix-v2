@@ -34,6 +34,8 @@ export const uid = () => crypto.randomUUID();
 
 export const api = {
   systemInfo: () => invoke<SystemInfo>("system_info"),
+  /** Re-syncs the backend `.git` watchers with the project list. */
+  gitWatchSync: () => invoke<void>("git_watch_sync"),
 
   // data
   projects: () => invoke<ProjectSummary[]>("projects_list"),

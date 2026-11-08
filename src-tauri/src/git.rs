@@ -225,7 +225,7 @@ pub async fn git_status(path: String) -> Result<GitStatus> {
     if !std::path::Path::new(&path).is_dir() {
         return err("Folder not found");
     }
-    let st = exec(&path, &["status", "--porcelain=v2", "--branch", "--untracked-files=normal"], 30).await?;
+    let st = exec(&path, &["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal"], 30).await?;
     if !st.ok {
         return Ok(GitStatus { is_repo: false, state: "no-repo".into(), ..Default::default() });
     }

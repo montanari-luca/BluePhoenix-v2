@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, errMsg } from "./api";
+import { pool } from "./pool";
 import { applyTheme } from "./theme";
 import type { AppInfo, Automation, Command, ForkSync, GitStatus, ProjectSummary, Settings, SystemInfo } from "./types";
 
@@ -33,7 +34,8 @@ interface State {
   init: () => Promise<void>;
   loadProjects: () => Promise<void>;
   refreshStatus: (id: string) => Promise<GitStatus | null>;
-  refreshAllStatuses: () => Promise<void>;
+  /** Refreshes every project's git status, on-screen cards first. `ifOlderThan` (ms) skips the call when the last full refresh is that recent. */
+  refreshAllStatuses: (opts?: { ifOlderThan?: number }) => Promise<void>;
   loadCommands: (id: string) => Promise<Command[]>;
   loadAutomations: () => Promise<void>;
   loadForks: () => Promise<void>;
@@ -49,6 +51,21 @@ interface State {
 }
 
 let toastId = 1;
+
+/** How many `git status` calls may run at once. */
+const STATUS_CONCURRENCY = 4;
+/** Project ids whose card is on screen; they refresh first. */
+const visibleCards = new Set<string>();
+export function setCardVisible(id: string, visible: boolean) {
+  if (visible) visibleCards.add(id);
+  else visibleCards.delete(id);
+}
+const inflight = new Map<string, Promise<GitStatus | null>>();
+/** Ids that changed again while their refresh was running. */
+const again = new Set<string>();
+let fullRefresh: Promise<void> | null = null;
+let lastFullRefresh = 0;
+
 
 /** Log a failure that the UI can live without (a badge, a count, a background refresh). */
 export function logError<T = undefined>(context: string, fallback?: T) {
@@ -110,27 +127,53 @@ export const useStore = create<State>((set, get) => ({
   loadProjects: async () => {
     try {
       set({ projects: await api.projects() });
+      void api.gitWatchSync().catch(logError("update git watchers"));
     } catch (e) {
       get().toast({ kind: "error", title: "Could not load projects", detail: errMsg(e) });
     }
   },
 
-  refreshStatus: async (id) => {
-    const p = get().projects.find((x) => x.id === id);
-    if (!p || !p.path) return null;
-    try {
-      const s = await api.gitStatus(p.path);
-      set((st) => ({ statuses: { ...st.statuses, [id]: s } }));
-      return s;
-    } catch (e) {
-      logError(`git status for ${p.name}`)(e);
-      set((st) => ({ statuses: { ...st.statuses, [id]: null } }));
-      return null;
+  refreshStatus: (id) => {
+    // One refresh per project at a time; a change that lands meanwhile triggers one more pass.
+    const running = inflight.get(id);
+    if (running) {
+      again.add(id);
+      return running;
     }
+    const once = async () => {
+      const p = get().projects.find((x) => x.id === id);
+      if (!p || !p.path) return null;
+      try {
+        const s = await api.gitStatus(p.path);
+        set((st) => ({ statuses: { ...st.statuses, [id]: s } }));
+        return s;
+      } catch (e) {
+        logError(`git status for ${p.name}`)(e);
+        set((st) => ({ statuses: { ...st.statuses, [id]: null } }));
+        return null;
+      }
+    };
+    const job = (async () => {
+      let s: GitStatus | null;
+      do {
+        again.delete(id);
+        s = await once();
+      } while (again.has(id));
+      return s;
+    })().finally(() => inflight.delete(id));
+    inflight.set(id, job);
+    return job;
   },
 
-  refreshAllStatuses: async () => {
-    await Promise.all(get().projects.map((p) => get().refreshStatus(p.id)));
+  refreshAllStatuses: (opts) => {
+    if (fullRefresh) return fullRefresh;
+    if (opts?.ifOlderThan && Date.now() - lastFullRefresh < opts.ifOlderThan) return Promise.resolve();
+    const ordered = [...get().projects].sort((a, b) => Number(visibleCards.has(b.id)) - Number(visibleCards.has(a.id)));
+    fullRefresh = pool(ordered, STATUS_CONCURRENCY, (p) => get().refreshStatus(p.id)).finally(() => {
+      fullRefresh = null;
+      lastFullRefresh = Date.now();
+    });
+    return fullRefresh;
   },
 
   loadCommands: async (id) => {
