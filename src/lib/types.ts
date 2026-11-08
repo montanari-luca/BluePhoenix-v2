@@ -265,6 +265,8 @@ export interface ForkSync {
   behind: number;
   ahead: number;
   message: string | null;
+  /** The installed git version when it is too old (< 2.38) to predict conflicts; null otherwise. */
+  oldGit: string | null;
 }
 
 // ---------- new project wizard ----------

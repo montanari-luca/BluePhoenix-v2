@@ -47,10 +47,12 @@ Create a stash or apply the latest one, and see the full stash list.
 
 In **Edit project** (or when adding one), turn on **This project is a GitHub fork**. The Git tab then shows an **Upstream** card for the original repository.
 
-- **Check now** fetches upstream and reports one of: *up to date*, *safe to pull* (the new commits merge cleanly), *conflicting* (they clash with your commits) or *not tested* (needs git 2.38 or newer). The check never touches your files.
+- **Check now** fetches upstream and reports one of: *up to date*, *safe to pull* (the new commits merge cleanly), *conflicting* (they clash with your commits) or *conflicts not tested*. The check never touches your files.
 - **Pull upstream** merges the new commits. It only runs when they are safe and you have no uncommitted changes.
 - **Check for upstream changes automatically** repeats the check in the background while BluePhoenix is open: every hour, 6 hours, 12 hours, 24 hours, 3 days, a week, or a **custom** number of minutes, hours or days (at least 15 minutes).
 - **Pull when it is safe** also merges safe changes by itself. Conflicting changes are only flagged, never merged. A notification tells you when something new is found.
+
+**Older git (before 2.38).** Predicting conflicts uses `git merge-tree --write-tree`, which arrived in git 2.38. With an older git the card says *Conflict prediction needs git 2.38+ (you have …)* and new commits show as *conflicts not tested*; ahead/behind counts still work. **Pull upstream** (and **Pull when it is safe**) then simply tries the merge — still only with no uncommitted changes — and undoes it with `git merge --abort` if it conflicts, so your branch is left as it was. Update git to get the prediction back.
 
 BluePhoenix looks for a remote named `upstream` (change the name, the branch, or give a URL to have it added under **Upstream remote**). Without a chosen branch it compares with the branch you have checked out, then `main`, then `master`. The project card on the dashboard shows the latest result.
 

@@ -5,6 +5,7 @@
 //! only needs a `&Db`; `start_background` wires it to a scheduler loop, notifications and the
 //! `fork-sync-finished` event the UI listens for.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use rusqlite::{params, OptionalExtension, Row};
@@ -49,6 +50,10 @@ pub struct ForkSync {
     pub behind: i64,
     pub ahead: i64,
     pub message: Option<String>,
+    /// The installed git version when it is too old (< 2.38) to predict conflicts; None otherwise.
+    /// Not stored: filled in from the running git whenever a result is handed to the UI.
+    #[serde(default)]
+    pub old_git: Option<String>,
 }
 
 impl ForkSync {
@@ -68,6 +73,7 @@ impl ForkSync {
             behind: 0,
             ahead: 0,
             message: None,
+            old_git: None,
         }
     }
 
@@ -95,6 +101,7 @@ fn from_row(r: &Row) -> rusqlite::Result<ForkSync> {
         behind: r.get("behind")?,
         ahead: r.get("ahead")?,
         message: r.get("message")?,
+        old_git: None,
     })
 }
 
@@ -162,6 +169,55 @@ fn project_path(db: &Db, project_id: &str) -> Result<String> {
     }
 }
 
+/// `git merge-tree --write-tree`, used to predict conflicts, arrived in git 2.38.
+const MERGE_TREE_MIN: (u32, u32) = (2, 38);
+
+#[derive(Clone, Debug, PartialEq)]
+struct GitVersion {
+    /// As git reports it, e.g. `2.39.3` or `2.43.0.windows.1`.
+    text: String,
+    major: u32,
+    minor: u32,
+}
+
+impl GitVersion {
+    fn predicts_conflicts(&self) -> bool {
+        (self.major, self.minor) >= MERGE_TREE_MIN
+    }
+}
+
+/// Parses `git --version` output: `git version 2.39.3 (Apple Git-146)`, `git version 2.43.0.windows.1`, …
+fn parse_git_version(out: &str) -> Option<GitVersion> {
+    let text = out.trim().strip_prefix("git version")?.split_whitespace().next()?;
+    let mut parts = text.split('.').map(|p| p.parse::<u32>().ok());
+    let major = parts.next()??;
+    let minor = parts.next()??;
+    Some(GitVersion { text: text.to_string(), major, minor })
+}
+
+/// The installed git's version, asked once per run. Failures are not cached, so installing git later is picked up.
+async fn git_version() -> Option<GitVersion> {
+    static VERSION: OnceLock<GitVersion> = OnceLock::new();
+    if let Some(v) = VERSION.get() {
+        return Some(v.clone());
+    }
+    let out = exec(".", &["--version"], 15).await.ok().filter(|o| o.ok)?;
+    let v = parse_git_version(&out.stdout)?;
+    Some(VERSION.get_or_init(|| v).clone())
+}
+
+/// The installed git version when it cannot predict conflicts. An undetectable version is assumed new enough:
+/// the check then reports the real error instead.
+async fn old_git() -> Option<String> {
+    git_version().await.filter(|v| !v.predicts_conflicts()).map(|v| v.text)
+}
+
+/// Fills in the fields that describe this machine rather than the stored result.
+async fn annotate(mut f: ForkSync) -> ForkSync {
+    f.old_git = old_git().await;
+    f
+}
+
 /// What a check found, before it is turned into a stored result.
 struct Outcome {
     status: &'static str,
@@ -180,7 +236,9 @@ fn first_line(a: &str, b: &str) -> String {
     text.trim().lines().next().unwrap_or("").to_string()
 }
 
-async fn run_check(path: &str, cfg: &ForkSync, pull: bool) -> Outcome {
+/// `old_git` is the installed version when it is too old for `merge-tree --write-tree`: conflicts are then not
+/// predicted, and a pull simply tries the merge (into a clean tree only) and undoes it if it fails.
+async fn run_check(path: &str, cfg: &ForkSync, pull: bool, old_git: Option<&str>) -> Outcome {
     if !std::path::Path::new(path).is_dir() {
         return fail("Folder not found");
     }
@@ -250,15 +308,21 @@ async fn run_check(path: &str, cfg: &ForkSync, pull: bool) -> Outcome {
         return Outcome { status: "up-to-date", behind, ahead, pulled: false, message };
     }
 
-    // Would the merge conflict? merge-tree needs git 2.38+; exit code 1 means conflicts.
-    let merge = exec(path, &["merge-tree", "--write-tree", "--no-messages", "HEAD", &target], 60).await;
-    let (status, verdict) = match merge {
-        Ok(o) if o.code == Some(0) => ("safe", "merges cleanly"),
-        Ok(o) if o.code == Some(1) => ("conflicting", "conflicts with your changes"),
-        _ => ("unknown", "could not be tested for conflicts (needs git 2.38 or newer)"),
+    // Would the merge conflict? Exit code 1 means conflicts.
+    let (status, verdict) = if let Some(v) = old_git {
+        ("unknown", format!("not tested for conflicts (git {v} is older than 2.38)"))
+    } else {
+        match exec(path, &["merge-tree", "--write-tree", "--no-messages", "HEAD", &target], 60).await {
+            Ok(o) if o.code == Some(0) => ("safe", "merges cleanly".into()),
+            Ok(o) if o.code == Some(1) => ("conflicting", "conflicts with your changes".into()),
+            Ok(o) => ("unknown", format!("could not be tested for conflicts: {}", first_line(&o.stderr, &o.stdout))),
+            Err(e) => ("unknown", format!("could not be tested for conflicts: {e}")),
+        }
     };
     let found = format!("{behind} new commit{} on {shown}", plural(behind));
-    if status != "safe" || !pull {
+    // Without a prediction (old git) a pull may still try: the merge below is undone if it fails.
+    let may_pull = status == "safe" || old_git.is_some();
+    if !may_pull || !pull {
         return Outcome { status, behind, ahead, pulled: false, message: format!("{found}; {verdict}.") };
     }
 
@@ -286,7 +350,7 @@ async fn run_check(path: &str, cfg: &ForkSync, pull: bool) -> Outcome {
             message: format!("Pulled {found}."),
         },
         Ok(o) => {
-            // The pre-check said safe but the merge failed anyway: leave the repository as it was.
+            // The merge failed despite the pre-check (or without one on old git): leave the repository as it was.
             let _ = exec(path, &["merge", "--abort"], 30).await;
             Outcome {
                 status: "conflicting",
@@ -306,12 +370,16 @@ fn plural(n: i64) -> &'static str {
 
 /// Checks one project now and stores the result. `pull` overrides the project's "pull automatically" setting.
 pub async fn check_project(db: &Db, project_id: &str, pull: Option<bool>) -> Result<ForkSync> {
+    check_with(db, project_id, pull, old_git().await).await
+}
+
+async fn check_with(db: &Db, project_id: &str, pull: Option<bool>, old_git: Option<String>) -> Result<ForkSync> {
     let cfg = load(db, project_id)?;
     if !cfg.is_fork {
         return err("This project is not marked as a GitHub fork");
     }
     let path = project_path(db, project_id)?;
-    let o = run_check(&path, &cfg, pull.unwrap_or(cfg.auto_pull)).await;
+    let o = run_check(&path, &cfg, pull.unwrap_or(cfg.auto_pull), old_git.as_deref()).await;
     let t = now();
     let result = ForkSync {
         last_check: Some(t),
@@ -320,6 +388,7 @@ pub async fn check_project(db: &Db, project_id: &str, pull: Option<bool>) -> Res
         behind: o.behind,
         ahead: o.ahead,
         message: Some(o.message),
+        old_git,
         ..cfg
     };
     store_result(db, &result)?;
@@ -328,17 +397,18 @@ pub async fn check_project(db: &Db, project_id: &str, pull: Option<bool>) -> Res
 
 #[tauri::command]
 pub async fn fork_get(db: State<'_, Db>, project_id: String) -> Result<ForkSync> {
-    load(&db, &project_id)
+    Ok(annotate(load(&db, &project_id)?).await)
 }
 
 #[tauri::command]
 pub async fn fork_list(db: State<'_, Db>) -> Result<Vec<ForkSync>> {
-    load_all(&db)
+    let old_git = old_git().await;
+    Ok(load_all(&db)?.into_iter().map(|f| ForkSync { old_git: old_git.clone(), ..f }).collect())
 }
 
 #[tauri::command]
 pub async fn fork_save(db: State<'_, Db>, config: ForkSync) -> Result<ForkSync> {
-    save(&db, config)
+    Ok(annotate(save(&db, config)?).await)
 }
 
 /// Manual "Check now" / "Pull now". Waits for a running scheduled check first.
@@ -531,6 +601,81 @@ mod tests {
         std::fs::write(f.fork.join("a.txt"), "dirty\n").unwrap();
         let r = check(&f, Some(true));
         assert_eq!(r.status.as_deref(), Some("safe"));
+        assert!(r.message.unwrap().contains("uncommitted"));
+        assert!(!f.fork.join("b.txt").exists());
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    fn check_old_git(f: &Fixture, pull: Option<bool>) -> ForkSync {
+        tauri::async_runtime::block_on(check_with(&f.db, "p1", pull, Some("2.37.1".into()))).unwrap()
+    }
+
+    #[test]
+    fn parses_git_versions() {
+        let v = |s: &str| parse_git_version(s).map(|v| (v.text, v.major, v.minor));
+        assert_eq!(v("git version 2.39.3 (Apple Git-146)\n"), Some(("2.39.3".into(), 2, 39)));
+        assert_eq!(v("git version 2.43.0.windows.1"), Some(("2.43.0.windows.1".into(), 2, 43)));
+        assert_eq!(v("git version 2.37.1"), Some(("2.37.1".into(), 2, 37)));
+        assert_eq!(v("git version 3.0"), Some(("3.0".into(), 3, 0)));
+        assert_eq!(v("git version 2"), None);
+        assert_eq!(v("hub version 2.40.0"), None);
+        assert_eq!(v(""), None);
+    }
+
+    #[test]
+    fn conflict_prediction_needs_2_38() {
+        let predicts = |s: &str| parse_git_version(s).unwrap().predicts_conflicts();
+        assert!(!predicts("git version 2.37.9"));
+        assert!(!predicts("git version 1.99.0"));
+        assert!(predicts("git version 2.38.0"));
+        assert!(predicts("git version 2.43.0.windows.1"));
+        assert!(predicts("git version 3.1.0"));
+    }
+
+    #[test]
+    fn old_git_reports_unknown_without_pulling() {
+        let f = fixture();
+        commit(&f.upstream, "b.txt", "new\n");
+        let r = check_old_git(&f, Some(false));
+        assert_eq!((r.status.as_deref(), r.behind), (Some("unknown"), 1));
+        assert_eq!(r.old_git.as_deref(), Some("2.37.1"));
+        assert!(r.message.unwrap().contains("not tested for conflicts"));
+        assert!(!f.fork.join("b.txt").exists());
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn old_git_pulls_clean_merges() {
+        let f = fixture();
+        commit(&f.upstream, "b.txt", "new\n");
+        let r = check_old_git(&f, Some(true));
+        assert_eq!(r.status.as_deref(), Some("pulled"));
+        assert!(f.fork.join("b.txt").exists());
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn old_git_undoes_a_conflicting_pull() {
+        let f = fixture();
+        commit(&f.upstream, "a.txt", "upstream\n");
+        commit(&f.fork, "a.txt", "mine\n");
+        let before = git(&f.fork, &["rev-parse", "HEAD"]);
+        let r = check_old_git(&f, Some(true));
+        assert_eq!(r.status.as_deref(), Some("conflicting"));
+        assert!(r.message.unwrap().contains("undone"));
+        assert_eq!(git(&f.fork, &["rev-parse", "HEAD"]), before);
+        assert_eq!(std::fs::read_to_string(f.fork.join("a.txt")).unwrap(), "mine\n");
+        assert!(git(&f.fork, &["status", "--porcelain"]).trim().is_empty());
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn old_git_never_pulls_into_a_dirty_tree() {
+        let f = fixture();
+        commit(&f.upstream, "b.txt", "new\n");
+        std::fs::write(f.fork.join("a.txt"), "dirty\n").unwrap();
+        let r = check_old_git(&f, Some(true));
+        assert_eq!(r.status.as_deref(), Some("unknown"));
         assert!(r.message.unwrap().contains("uncommitted"));
         assert!(!f.fork.join("b.txt").exists());
         let _ = std::fs::remove_dir_all(&f.root);
